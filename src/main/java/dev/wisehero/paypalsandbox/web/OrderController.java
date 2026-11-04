@@ -34,18 +34,18 @@ class OrderController {
     }
 
     @PostMapping("/{orderId}/capture")
-    PurchaseOrder capture(@PathVariable Long orderId, @RequestParam String strategy) {
-        return orderService.capture(orderId, CaptureStrategy.from(strategy));
+    OrderResponse capture(@PathVariable Long orderId, @RequestParam String strategy) {
+        return OrderResponse.from(orderService.capture(orderId, CaptureStrategy.from(strategy)));
     }
 
     @GetMapping
-    List<PurchaseOrder> list() {
-        return orderService.list();
+    List<OrderResponse> list() {
+        return orderService.list().stream().map(OrderResponse::from).toList();
     }
 
     @GetMapping("/{orderId}")
-    PurchaseOrder get(@PathVariable Long orderId) {
-        return orderService.get(orderId);
+    OrderResponse get(@PathVariable Long orderId) {
+        return OrderResponse.from(orderService.get(orderId));
     }
 
     /** PG 쪽 실제 상태. 우리 주문 상태와 비교할 때 쓴다. */

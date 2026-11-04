@@ -15,6 +15,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class FakePaymentGateway implements PgClient {
 
+    private static final String ORDER_PREFIX = "FAKE-";
+
     private final FaultInjector faults;
     private final Map<String, FakeOrder> orders = new ConcurrentHashMap<>();
     private final Map<String, String> captureByIdempotencyKey = new ConcurrentHashMap<>();
@@ -25,8 +27,13 @@ public class FakePaymentGateway implements PgClient {
     }
 
     @Override
+    public String orderIdPrefix() {
+        return ORDER_PREFIX;
+    }
+
+    @Override
     public PgOrder createOrder(String merchantOrderId, BigDecimal amount, String currency) {
-        String pgOrderId = "FAKE-" + UUID.randomUUID();
+        String pgOrderId = ORDER_PREFIX + UUID.randomUUID();
         orders.put(pgOrderId, new FakeOrder(amount, currency));
         return new PgOrder(pgOrderId, null);
     }

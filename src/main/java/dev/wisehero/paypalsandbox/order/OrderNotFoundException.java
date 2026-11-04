@@ -1,4 +1,4 @@
-package dev.wisehero.paypalsandbox.checkout;
+package dev.wisehero.paypalsandbox.order;
 
 public class OrderNotFoundException extends RuntimeException {
 

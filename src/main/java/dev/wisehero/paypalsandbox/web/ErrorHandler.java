@@ -1,7 +1,7 @@
 package dev.wisehero.paypalsandbox.web;
 
-import dev.wisehero.paypalsandbox.checkout.OrderNotFoundException;
 import dev.wisehero.paypalsandbox.fault.SimulatedDbFailureException;
+import dev.wisehero.paypalsandbox.order.OrderNotFoundException;
 import dev.wisehero.paypalsandbox.pg.PgDeclinedException;
 import dev.wisehero.paypalsandbox.pg.PgTimeoutException;
 import org.springframework.dao.DataAccessResourceFailureException;

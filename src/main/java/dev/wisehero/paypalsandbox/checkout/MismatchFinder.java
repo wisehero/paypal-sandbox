@@ -1,5 +1,6 @@
 package dev.wisehero.paypalsandbox.checkout;
 
+import dev.wisehero.paypalsandbox.order.CaptureStrategy;
 import dev.wisehero.paypalsandbox.order.OrderStatus;
 import dev.wisehero.paypalsandbox.order.PurchaseOrder;
 import dev.wisehero.paypalsandbox.order.PurchaseOrderRepository;
@@ -36,11 +37,11 @@ public class MismatchFinder {
         if (!snapshot.isCaptured()) {
             return null;
         }
-        return new Mismatch(order.getId(), order.getStatus(), order.getCaptureStrategy() == null
-                ? null : order.getCaptureStrategy().name(), order.getPgOrderId(), snapshot.captureId());
+        return new Mismatch(order.getId(), order.getStatus(), order.getCaptureStrategy(), order.getPgOrderId(),
+                snapshot.captureId());
     }
 
-    public record Mismatch(Long orderId, OrderStatus orderStatus, String strategy, String pgOrderId,
+    public record Mismatch(Long orderId, OrderStatus orderStatus, CaptureStrategy strategy, String pgOrderId,
             String pgCaptureId) {
     }
 }

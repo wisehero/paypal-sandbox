@@ -22,14 +22,14 @@ public class StockLedger {
     @Transactional(propagation = Propagation.MANDATORY)
     public void reserve(PurchaseOrder order) {
         for (OrderLine line : sorted(order)) {
-            products.findByIdForUpdate(line.getProductId()).orElseThrow().decreaseStock(line.getQuantity());
+            products.lockOrThrow(line.getProductId()).decreaseStock(line.getQuantity());
         }
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void release(PurchaseOrder order) {
         for (OrderLine line : sorted(order)) {
-            products.findByIdForUpdate(line.getProductId()).orElseThrow().increaseStock(line.getQuantity());
+            products.lockOrThrow(line.getProductId()).increaseStock(line.getQuantity());
         }
     }
 

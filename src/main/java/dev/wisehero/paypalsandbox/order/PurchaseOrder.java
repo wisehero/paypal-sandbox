@@ -33,8 +33,11 @@ import org.hibernate.annotations.FetchMode;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PurchaseOrder {
 
+    /** 결제 완료나 실패로 확정할 수 있는 상태. */
     private static final Set<OrderStatus> PAYABLE =
             EnumSet.of(OrderStatus.CREATED, OrderStatus.PAYMENT_IN_PROGRESS, OrderStatus.PAYMENT_UNKNOWN);
+
+    private static final int FAILURE_REASON_MAX = 255;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -123,9 +126,7 @@ public class PurchaseOrder {
     }
 
     public void markPaid(String captureId) {
-        if (!PAYABLE.contains(status)) {
-            throw new IllegalStateException("결제 완료로 바꿀 수 없는 상태: order=" + id + ", status=" + status);
-        }
+        requirePayable("결제 완료");
         this.status = OrderStatus.PAID;
         this.captureId = captureId;
     }
@@ -136,12 +137,9 @@ public class PurchaseOrder {
     }
 
     public void markFailed(String reason) {
-        if (!PAYABLE.contains(status)) {
-            throw new IllegalStateException("결제 실패로 바꿀 수 없는 상태: order=" + id + ", status=" + status);
-        }
+        requirePayable("결제 실패");
         this.status = OrderStatus.PAYMENT_FAILED;
-        // PG 오류 응답을 통째로 담으면 컬럼(255자)을 넘는다. 전체 응답은 PG 통신 로그에 남아 있다.
-        this.failureReason = reason != null && reason.length() > 255 ? reason.substring(0, 252) + "..." : reason;
+        this.failureReason = truncate(reason);
     }
 
     public void markRefunded(String captureId) {
@@ -153,6 +151,37 @@ public class PurchaseOrder {
     /** PG 결과를 기다리는 상태인지. 이 상태의 주문은 결제 시작 때 재고를 예약해 두었다. */
     public boolean isAwaitingPgResult() {
         return status == OrderStatus.PAYMENT_IN_PROGRESS || status == OrderStatus.PAYMENT_UNKNOWN;
+    }
+
+    public boolean isPaid() {
+        return status == OrderStatus.PAID;
+    }
+
+    /**
+     * 캡처를 한 번이라도 시작했는지. 트랜잭션 안 구조는 상태를 CREATED로 둔 채 캡처하므로
+     * 상태만으로는 알 수 없고 captureStrategy도 함께 본다.
+     */
+    public boolean isCaptureStarted() {
+        return status != OrderStatus.CREATED || captureStrategy != null;
+    }
+
+    /** 쇼핑 화면 체크아웃에서 만든 주문인지. 실험 콘솔에서 만든 주문은 캡처할 때 구조를 고른다. */
+    public boolean isFromCheckout() {
+        return requestedStrategy != null;
+    }
+
+    private void requirePayable(String target) {
+        if (!PAYABLE.contains(status)) {
+            throw new IllegalStateException(target + "로 바꿀 수 없는 상태: order=" + id + ", status=" + status);
+        }
+    }
+
+    /** PG 오류 응답을 통째로 담으면 컬럼 길이를 넘는다. 전체 응답은 PG 통신 로그에 남아 있다. */
+    private static String truncate(String reason) {
+        if (reason == null || reason.length() <= FAILURE_REASON_MAX) {
+            return reason;
+        }
+        return reason.substring(0, FAILURE_REASON_MAX - 3) + "...";
     }
 
     private void requireStatus(OrderStatus expected) {

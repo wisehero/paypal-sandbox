@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 주문마다 PG를 고를 수 있게 하는 라우터.
- * 생성 이후에는 PG 주문 ID 접두어로 구분한다. 엑심베이 주문은 SBX, 가짜 PG 주문은 FAKE-로 시작하고 나머지는 PayPal이다.
+ * 생성 이후에는 PG 주문 ID 접두어로 구분한다. 접두어는 각 PG 구현체가 {@link PgClient#orderIdPrefix()}로 알려 준다.
  */
 public class RoutingPaymentGateway implements PaymentGateway {
 
@@ -69,14 +69,14 @@ public class RoutingPaymentGateway implements PaymentGateway {
         client(provider).refund(captureId, idempotencyKey);
     }
 
-    public static PgProvider providerOfOrder(String pgOrderId) {
-        if (pgOrderId.startsWith("FAKE-")) {
-            return PgProvider.FAKE;
-        }
-        if (pgOrderId.startsWith(EximbayPaymentGateway.ORDER_PREFIX)) {
-            return PgProvider.EXIMBAY;
-        }
-        return PgProvider.PAYPAL;
+    /** 접두어가 맞는 PG를 먼저 찾고, 없으면 접두어 없이 ID를 쓰는 PG(PayPal)로 본다. */
+    private PgProvider providerOfOrder(String pgOrderId) {
+        return clients.values().stream()
+                .filter(c -> c.orderIdPrefix() != null && pgOrderId.startsWith(c.orderIdPrefix()))
+                .findFirst()
+                .or(() -> clients.values().stream().filter(c -> c.orderIdPrefix() == null).findFirst())
+                .map(PgClient::provider)
+                .orElseThrow(() -> new IllegalStateException("어느 PG의 주문인지 모른다: " + pgOrderId));
     }
 
     private PgClient client(PgProvider provider) {

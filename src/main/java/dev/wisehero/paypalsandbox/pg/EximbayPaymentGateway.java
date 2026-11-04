@@ -17,9 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
 
 /**
  * 엑심베이 인증 결제창(PAYER_AUTH) 연동.
@@ -37,7 +35,7 @@ import org.springframework.web.client.RestClientResponseException;
 public class EximbayPaymentGateway implements PgClient {
 
     /** 엑심베이 테스트 가맹점은 여러 사람이 함께 쓰므로 주문 ID가 겹치지 않게 시각과 난수를 붙인다. */
-    public static final String ORDER_PREFIX = "SBX";
+    private static final String ORDER_PREFIX = "SBX";
 
     private static final DateTimeFormatter ORDER_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
@@ -65,6 +63,11 @@ public class EximbayPaymentGateway implements PgClient {
     @Override
     public PgProvider provider() {
         return PgProvider.EXIMBAY;
+    }
+
+    @Override
+    public String orderIdPrefix() {
+        return ORDER_PREFIX;
     }
 
     @Override
@@ -281,19 +284,9 @@ public class EximbayPaymentGateway implements PgClient {
         return a != null ? a : b;
     }
 
-    /** 네트워크 오류와 5xx는 "결과를 모름", 4xx는 "확실한 거절"로 바꾼다. */
     private static Map<String, Object> call(Supplier<Map<String, Object>> request) {
-        try {
-            Map<String, Object> body = request.get();
-            return body == null ? Map.of() : body;
-        } catch (ResourceAccessException e) {
-            throw new PgTimeoutException("엑심베이 응답 없음: " + e.getMessage(), e);
-        } catch (RestClientResponseException e) {
-            if (e.getStatusCode().is5xxServerError()) {
-                throw new PgTimeoutException("엑심베이 5xx: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
-            }
-            throw new PgDeclinedException("엑심베이 " + e.getStatusCode() + ": " + e.getResponseBodyAsString());
-        }
+        Map<String, Object> body = PgCalls.call("엑심베이", request);
+        return body == null ? Map.of() : body;
     }
 
     @Getter

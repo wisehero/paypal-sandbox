@@ -8,14 +8,12 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.http.HttpStatusCode;
+import java.util.function.Supplier;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.BufferingClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
 
 /**
  * PayPal Orders v2 API 샌드박스 연동.
@@ -222,21 +220,7 @@ public class PayPalPaymentGateway implements PgClient {
         return captures.isEmpty() ? null : Json.asMap(captures.getFirst());
     }
 
-    /**
-     * 네트워크 오류와 5xx는 "결과를 모름"으로, 4xx는 "확실한 거절"로 바꾼다.
-     * 5xx는 PayPal 내부에서 처리가 됐을 수도 있으므로 거절로 단정하지 않는다.
-     */
-    private static <T> T call(java.util.function.Supplier<T> request) {
-        try {
-            return request.get();
-        } catch (ResourceAccessException e) {
-            throw new PgTimeoutException("PayPal 응답 없음: " + e.getMessage(), e);
-        } catch (RestClientResponseException e) {
-            HttpStatusCode status = e.getStatusCode();
-            if (status.is5xxServerError()) {
-                throw new PgTimeoutException("PayPal 5xx: " + status + " " + e.getResponseBodyAsString(), e);
-            }
-            throw new PgDeclinedException("PayPal " + status + ": " + e.getResponseBodyAsString());
-        }
+    private static <T> T call(Supplier<T> request) {
+        return PgCalls.call("PayPal", request);
     }
 }

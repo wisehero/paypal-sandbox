@@ -45,6 +45,25 @@ public class OrderService {
      * @param requestedStrategy 체크아웃에서 고른 결제 처리 구조. null이면 캡처할 때 고른다.
      */
     public CreatedOrder create(List<Item> items, PgProvider provider, CaptureStrategy requestedStrategy) {
+        Map<Long, Integer> quantities = mergeQuantities(items);
+        PurchaseOrder saved = tx.execute(status ->
+                orders.save(new PurchaseOrder(snapshotLines(quantities), CURRENCY, requestedStrategy)));
+        Long orderId = saved.getId();
+
+        PaymentGateway.PgOrder pgOrder;
+        try {
+            pgOrder = gateway.createOrder(provider, String.valueOf(orderId), saved.getAmount(), saved.getCurrency());
+        } catch (RuntimeException e) {
+            tx.executeWithoutResult(status -> orders.getOrThrow(orderId).markFailed("PG 주문 생성 실패: " + e.getMessage()));
+            throw e;
+        }
+
+        tx.executeWithoutResult(status -> orders.getOrThrow(orderId).attachPgOrder(provider, pgOrder.pgOrderId()));
+        return new CreatedOrder(orderId, pgOrder.pgOrderId(), pgOrder.approveUrl());
+    }
+
+    /** 같은 상품이 여러 줄로 들어오면 수량을 합친다. 들어온 순서는 유지한다. */
+    private static Map<Long, Integer> mergeQuantities(List<Item> items) {
         Map<Long, Integer> quantities = new LinkedHashMap<>();
         for (Item item : items) {
             if (item.quantity() < 1) {
@@ -55,31 +74,18 @@ public class OrderService {
         if (quantities.isEmpty()) {
             throw new IllegalArgumentException("주문 상품이 없다");
         }
+        return quantities;
+    }
 
-        PurchaseOrder saved = tx.execute(status -> {
-            List<OrderLine> lines = quantities.entrySet().stream().map(e -> {
-                Product product = products.findById(e.getKey())
-                        .orElseThrow(() -> new IllegalArgumentException("상품 없음: " + e.getKey()));
-                if (product.getStock() < e.getValue()) {
-                    throw new IllegalArgumentException("재고 부족: " + product.getName() + " (남은 재고 " + product.getStock() + ")");
-                }
-                return new OrderLine(product.getId(), product.getName(), product.getPrice(), e.getValue());
-            }).toList();
-            return orders.save(new PurchaseOrder(lines, CURRENCY, requestedStrategy));
-        });
-
-        PaymentGateway.PgOrder pgOrder;
-        try {
-            pgOrder = gateway.createOrder(provider, String.valueOf(saved.getId()), saved.getAmount(), saved.getCurrency());
-        } catch (RuntimeException e) {
-            tx.executeWithoutResult(status -> orders.findById(saved.getId()).orElseThrow()
-                    .markFailed("PG 주문 생성 실패: " + e.getMessage()));
-            throw e;
-        }
-
-        tx.executeWithoutResult(status -> orders.findById(saved.getId()).orElseThrow()
-                .attachPgOrder(provider, pgOrder.pgOrderId()));
-        return new CreatedOrder(saved.getId(), pgOrder.pgOrderId(), pgOrder.approveUrl());
+    /** 지금 상품명과 가격을 주문 줄에 복사한다. 재고는 확인만 하고 줄이지 않는다. */
+    private List<OrderLine> snapshotLines(Map<Long, Integer> quantities) {
+        return quantities.entrySet().stream().map(e -> {
+            Product product = products.getOrThrow(e.getKey());
+            if (product.getStock() < e.getValue()) {
+                throw new IllegalArgumentException("재고 부족: " + product.getName() + " (남은 재고 " + product.getStock() + ")");
+            }
+            return new OrderLine(product.getId(), product.getName(), product.getPrice(), e.getValue());
+        }).toList();
     }
 
     public PurchaseOrder capture(Long orderId, CaptureStrategy strategy) {
@@ -90,7 +96,7 @@ public class OrderService {
     }
 
     public PurchaseOrder get(Long orderId) {
-        return orders.findById(orderId).orElseThrow(() -> new OrderNotFoundException(orderId));
+        return orders.getOrThrow(orderId);
     }
 
     public List<PurchaseOrder> list() {
@@ -106,7 +112,7 @@ public class OrderService {
     }
 
     public PurchaseOrder getByPgOrderId(String pgOrderId) {
-        return orders.findByPgOrderId(pgOrderId).orElseThrow(() -> new OrderNotFoundException(pgOrderId));
+        return orders.getByPgOrderIdOrThrow(pgOrderId);
     }
 
     public record Item(Long productId, int quantity) {

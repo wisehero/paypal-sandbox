@@ -32,14 +32,13 @@ public class InTransactionCheckout {
 
     @Transactional
     public PurchaseOrder capture(Long orderId) {
-        PurchaseOrder order = orders.findByIdForUpdate(orderId)
-                .orElseThrow(() -> new OrderNotFoundException(orderId));
+        PurchaseOrder order = orders.lockOrThrow(orderId);
         order.beginInTransactionCapture();
 
         stock.reserve(order);
 
         // 커넥션과 락을 쥔 채로 외부 호출
-        PaymentGateway.CaptureResult result = gateway.capture(order.getPgOrderId(), "capture-" + order.getId());
+        PaymentGateway.CaptureResult result = gateway.capture(order.getPgOrderId(), IdempotencyKeys.capture(orderId));
 
         confirmation.confirm(order, result.captureId());
         faults.failDbWriteIfRequested();

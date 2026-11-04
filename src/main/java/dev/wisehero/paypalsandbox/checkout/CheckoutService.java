@@ -28,11 +28,11 @@ public class CheckoutService {
      */
     public CompleteResult complete(String pgOrderId) {
         PurchaseOrder order = orderService.getByPgOrderId(pgOrderId);
-        if (order.getRequestedStrategy() == null) {
+        if (!order.isFromCheckout()) {
             throw new IllegalStateException("실험 콘솔에서 만든 주문은 콘솔에서 캡처한다: order=" + order.getId());
         }
         // 같은 화면을 새로고침해서 두 번 들어와도 다시 캡처하지 않는다.
-        if (order.getStatus() != OrderStatus.CREATED || order.getCaptureStrategy() != null) {
+        if (order.isCaptureStarted()) {
             return new CompleteResult(order.getId(), order.getStatus(), null);
         }
 

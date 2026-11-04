@@ -3,7 +3,6 @@ package dev.wisehero.paypalsandbox.web;
 import dev.wisehero.paypalsandbox.checkout.CheckoutService;
 import dev.wisehero.paypalsandbox.checkout.OrderService;
 import dev.wisehero.paypalsandbox.order.CaptureStrategy;
-import dev.wisehero.paypalsandbox.order.PurchaseOrder;
 import dev.wisehero.paypalsandbox.pg.PgProvider;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -37,8 +36,8 @@ class CheckoutController {
 
     /** PG 승인 화면과 돌아온 화면이 PG 주문 ID로 우리 주문을 찾을 때 쓴다. */
     @GetMapping("/pg-orders/{pgOrderId}")
-    PurchaseOrder byPgOrder(@PathVariable String pgOrderId) {
-        return orderService.getByPgOrderId(pgOrderId);
+    OrderResponse byPgOrder(@PathVariable String pgOrderId) {
+        return OrderResponse.from(orderService.getByPgOrderId(pgOrderId));
     }
 
     @PostMapping("/complete")

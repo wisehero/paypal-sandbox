@@ -49,9 +49,7 @@ public class PaymentReconciler {
 
     /** 웹훅에서 부른다. 캡처 완료 알림이므로 실패 처리는 하지 않는다. */
     public Result reconcileByPgOrderId(String pgOrderId) {
-        PurchaseOrder order = orders.findByPgOrderId(pgOrderId)
-                .orElseThrow(() -> new OrderNotFoundException(pgOrderId));
-        return reconcile(order.getId(), false);
+        return reconcile(orders.getByPgOrderIdOrThrow(pgOrderId).getId(), false);
     }
 
     /**
@@ -59,39 +57,45 @@ public class PaymentReconciler {
      *                  캡처 요청이 아직 PG에서 처리 중일 수 있으므로 충분히 시간이 지난 주문에만 true를 쓴다.
      */
     public Result reconcile(Long orderId, boolean allowFail) {
-        PurchaseOrder current = orders.findById(orderId).orElseThrow(() -> new OrderNotFoundException(orderId));
-        PaymentGateway.PgOrderSnapshot snapshot = gateway.getOrder(current.getPgOrderId());
-
-        Result result = tx.execute(status -> {
-            PurchaseOrder order = orders.findByIdForUpdate(orderId).orElseThrow();
-            if (order.getStatus() == OrderStatus.PAID) {
-                return new Result(orderId, Action.ALREADY_PAID, null);
-            }
-            if (order.isAwaitingPgResult()) {
-                if (snapshot.isCaptured()) {
-                    confirmation.confirm(order, snapshot.captureId());
-                    return new Result(orderId, Action.CONFIRMED_PAID, snapshot.captureId());
-                }
-                if (allowFail) {
-                    stock.release(order);
-                    order.markFailed("대사: PG 캡처 없음 (" + snapshot.status() + ")");
-                    return new Result(orderId, Action.MARKED_FAILED, null);
-                }
-                return new Result(orderId, Action.STILL_PENDING, null);
-            }
-            if (order.getStatus() == OrderStatus.PAYMENT_FAILED && snapshot.isCaptured()) {
-                return new Result(orderId, Action.REFUND_REQUIRED, snapshot.captureId());
-            }
-            return new Result(orderId, Action.NOTHING, null);
-        });
+        // PG 조회는 트랜잭션 밖에서 한다. 그동안 커넥션과 락을 쥐지 않는다.
+        PaymentGateway.PgOrderSnapshot snapshot = gateway.getOrder(orders.getOrThrow(orderId).getPgOrderId());
+        Result result = tx.execute(status -> apply(orders.lockOrThrow(orderId), snapshot, allowFail));
 
         if (result.action() == Action.REFUND_REQUIRED) {
-            gateway.refund(result.captureId(), "refund-" + orderId);
-            tx.executeWithoutResult(status ->
-                    orders.findByIdForUpdate(orderId).orElseThrow().markRefunded(result.captureId()));
-            return new Result(orderId, Action.REFUNDED, result.captureId());
+            return refund(orderId, result.captureId());
         }
         return result;
+    }
+
+    /** PG 상태를 보고 주문을 확정하거나 실패 처리한다. 환불이 필요하면 표시만 하고 트랜잭션 밖에서 한다. */
+    private Result apply(PurchaseOrder order, PaymentGateway.PgOrderSnapshot snapshot, boolean allowFail) {
+        Long orderId = order.getId();
+        if (order.isPaid()) {
+            return new Result(orderId, Action.ALREADY_PAID, null);
+        }
+        if (order.isAwaitingPgResult()) {
+            if (snapshot.isCaptured()) {
+                confirmation.confirm(order, snapshot.captureId());
+                return new Result(orderId, Action.CONFIRMED_PAID, snapshot.captureId());
+            }
+            if (allowFail) {
+                stock.release(order);
+                order.markFailed("대사: PG 캡처 없음 (" + snapshot.status() + ")");
+                return new Result(orderId, Action.MARKED_FAILED, null);
+            }
+            return new Result(orderId, Action.STILL_PENDING, null);
+        }
+        if (order.getStatus() == OrderStatus.PAYMENT_FAILED && snapshot.isCaptured()) {
+            return new Result(orderId, Action.REFUND_REQUIRED, snapshot.captureId());
+        }
+        return new Result(orderId, Action.NOTHING, null);
+    }
+
+    /** 보상: 주문은 실패로 끝났는데 PG에서 돈이 빠져나갔다. */
+    private Result refund(Long orderId, String captureId) {
+        gateway.refund(captureId, IdempotencyKeys.refund(orderId));
+        tx.executeWithoutResult(status -> orders.lockOrThrow(orderId).markRefunded(captureId));
+        return new Result(orderId, Action.REFUNDED, captureId);
     }
 
     public record Result(Long orderId, Action action, String captureId) {

@@ -2,7 +2,6 @@ package dev.wisehero.paypalsandbox.web;
 
 import dev.wisehero.paypalsandbox.checkout.MismatchFinder;
 import dev.wisehero.paypalsandbox.checkout.PaymentReconciler;
-import dev.wisehero.paypalsandbox.product.Product;
 import dev.wisehero.paypalsandbox.product.ProductRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -21,8 +20,8 @@ class AdminController {
 
     /** 결제와 상관없는 조회. 커넥션 풀이 고갈되면 이 API도 같이 멈춘다. */
     @GetMapping("/products")
-    List<Product> products() {
-        return products.findAll();
+    List<ProductResponse> products() {
+        return products.findAll().stream().map(ProductResponse::from).toList();
     }
 
     @PostMapping("/reconcile")

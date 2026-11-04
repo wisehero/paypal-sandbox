@@ -34,38 +34,52 @@ public class SplitTransactionCheckout {
     private final TransactionTemplate tx;
 
     public PurchaseOrder capture(Long orderId) {
-        String pgOrderId = tx.execute(status -> {
-            PurchaseOrder order = lock(orderId);
+        String pgOrderId = startPayment(orderId);
+
+        PaymentGateway.CaptureResult result;
+        try {
+            result = gateway.capture(pgOrderId, IdempotencyKeys.capture(orderId));
+        } catch (PgDeclinedException e) {
+            markFailed(orderId, e.getMessage());
+            throw e;
+        } catch (PgTimeoutException e) {
+            markUnknown(orderId);
+            throw e;
+        }
+        return confirm(orderId, result.captureId());
+    }
+
+    /** 트랜잭션 1: 결제 시작 흔적을 남기고 재고를 예약한 뒤 바로 커밋한다. */
+    private String startPayment(Long orderId) {
+        return tx.execute(status -> {
+            PurchaseOrder order = orders.lockOrThrow(orderId);
             order.startPayment();
             stock.reserve(order);
             return order.getPgOrderId();
         });
+    }
 
-        PaymentGateway.CaptureResult result;
-        try {
-            result = gateway.capture(pgOrderId, "capture-" + orderId);
-        } catch (PgDeclinedException e) {
-            tx.executeWithoutResult(status -> {
-                PurchaseOrder order = lock(orderId);
-                stock.release(order);
-                order.markFailed(e.getMessage());
-            });
-            throw e;
-        } catch (PgTimeoutException e) {
-            // 실패로 단정하지 않는다. 재고도 그대로 잡아 두고 대사에 맡긴다.
-            tx.executeWithoutResult(status -> lock(orderId).markUnknown());
-            throw e;
-        }
-
-        return tx.execute(status -> {
-            PurchaseOrder order = lock(orderId);
-            confirmation.confirm(order, result.captureId());
-            faults.failDbWriteIfRequested();
-            return order;
+    /** PG가 확실히 거절했다. 예약한 재고를 돌려준다. */
+    private void markFailed(Long orderId, String reason) {
+        tx.executeWithoutResult(status -> {
+            PurchaseOrder order = orders.lockOrThrow(orderId);
+            stock.release(order);
+            order.markFailed(reason);
         });
     }
 
-    private PurchaseOrder lock(Long orderId) {
-        return orders.findByIdForUpdate(orderId).orElseThrow(() -> new OrderNotFoundException(orderId));
+    /** 결제됐는지 모른다. 실패로 단정하지 않고 재고도 그대로 잡아 둔 채 대사에 맡긴다. */
+    private void markUnknown(Long orderId) {
+        tx.executeWithoutResult(status -> orders.lockOrThrow(orderId).markUnknown());
+    }
+
+    /** 트랜잭션 2: 결제 완료로 확정한다. */
+    private PurchaseOrder confirm(Long orderId, String captureId) {
+        return tx.execute(status -> {
+            PurchaseOrder order = orders.lockOrThrow(orderId);
+            confirmation.confirm(order, captureId);
+            faults.failDbWriteIfRequested();
+            return order;
+        });
     }
 }

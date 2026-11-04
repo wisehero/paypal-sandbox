@@ -1,6 +1,5 @@
 package dev.wisehero.paypalsandbox.checkout;
 
-import dev.wisehero.paypalsandbox.order.OrderStatus;
 import dev.wisehero.paypalsandbox.order.PurchaseOrder;
 import dev.wisehero.paypalsandbox.payment.OutboxEvent;
 import dev.wisehero.paypalsandbox.payment.OutboxEventRepository;
@@ -24,7 +23,7 @@ public class PaymentConfirmation {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void confirm(PurchaseOrder order, String captureId) {
-        if (order.getStatus() == OrderStatus.PAID) {
+        if (order.isPaid()) {
             return;
         }
         order.markPaid(captureId);

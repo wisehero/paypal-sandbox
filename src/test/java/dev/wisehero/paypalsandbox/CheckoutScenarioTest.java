@@ -260,7 +260,7 @@ class CheckoutScenarioTest {
     }
 
     private void markFailedDirectly(Long orderId) {
-        tx.executeWithoutResult(s -> orders.findByIdForUpdate(orderId).orElseThrow().markFailed("수동 실패 처리"));
+        tx.executeWithoutResult(s -> orders.lockOrThrow(orderId).markFailed("수동 실패 처리"));
     }
 
     private Product newProduct(int stock) {
