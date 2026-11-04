@@ -7,8 +7,10 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.BufferingClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.ResourceAccessException;
@@ -27,6 +29,11 @@ public class PayPalPaymentGateway implements PgClient {
     private final PayPalProperties properties;
     private final FaultInjector faults;
     private final RestClient client;
+    /**
+     * H2 메모리 DB라 재시작하면 주문 ID가 다시 1부터 시작한다. PayPal은 PayPal-Request-Id를 기억하므로
+     * 주문 ID만으로 키를 만들면 이전 실행에서 만든 주문의 응답을 돌려받는다. 실행마다 다른 값을 붙인다.
+     */
+    private final String runId = UUID.randomUUID().toString().substring(0, 8);
 
     private String accessToken;
     private Instant accessTokenExpiresAt = Instant.EPOCH;
@@ -42,7 +49,9 @@ public class PayPalPaymentGateway implements PgClient {
         requestFactory.setReadTimeout(properties.readTimeout());
         this.client = RestClient.builder()
                 .baseUrl(properties.baseUrl())
-                .requestFactory(requestFactory)
+                // 응답 본문을 로그와 RestClient가 함께 읽도록 버퍼에 담는다.
+                .requestFactory(new BufferingClientHttpRequestFactory(requestFactory))
+                .requestInterceptor(new PgHttpLogging("PayPal"))
                 .build();
     }
 
@@ -67,7 +76,7 @@ public class PayPalPaymentGateway implements PgClient {
         Map<String, Object> response = call(() -> client.post()
                 .uri("/v2/checkout/orders")
                 .headers(h -> h.setBearerAuth(token()))
-                .header("PayPal-Request-Id", "create-" + merchantOrderId)
+                .header("PayPal-Request-Id", "create-" + merchantOrderId + "-" + runId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
@@ -94,7 +103,8 @@ public class PayPalPaymentGateway implements PgClient {
             response = call(() -> client.post()
                     .uri("/v2/checkout/orders/{id}/capture", pgOrderId)
                     .headers(h -> h.setBearerAuth(token()))
-                    .header("PayPal-Request-Id", idempotencyKey)
+                    // PayPal 주문 ID를 붙여 다른 주문과 키가 겹치지 않게 한다. 같은 주문의 재시도에는 같은 키가 간다.
+                    .header("PayPal-Request-Id", idempotencyKey + "-" + pgOrderId)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body("{}")
                     .retrieve()
@@ -146,7 +156,7 @@ public class PayPalPaymentGateway implements PgClient {
         call(() -> client.post()
                 .uri("/v2/payments/captures/{id}/refund", captureId)
                 .headers(h -> h.setBearerAuth(token()))
-                .header("PayPal-Request-Id", idempotencyKey)
+                .header("PayPal-Request-Id", idempotencyKey + "-" + captureId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{}")
                 .retrieve()

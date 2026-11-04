@@ -138,7 +138,8 @@ public class PurchaseOrder {
             throw new IllegalStateException("결제 실패로 바꿀 수 없는 상태: order=" + id + ", status=" + status);
         }
         this.status = OrderStatus.PAYMENT_FAILED;
-        this.failureReason = reason;
+        // PG 오류 응답을 통째로 담으면 컬럼(255자)을 넘는다. 전체 응답은 PG 통신 로그에 남아 있다.
+        this.failureReason = reason != null && reason.length() > 255 ? reason.substring(0, 252) + "..." : reason;
     }
 
     public void markRefunded(String captureId) {
