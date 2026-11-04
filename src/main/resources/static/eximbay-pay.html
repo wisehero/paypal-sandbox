@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>엑심베이 결제</title>
+<link rel="stylesheet" href="/assets/shop.css">
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap" style="max-width:520px">
+  <div class="result-head" id="content">
+    <div class="spinner"></div>
+    <h1>엑심베이 결제창을 여는 중입니다</h1>
+  </div>
+</main>
+
+<script src="/assets/shop.js"></script>
+<script>
+// 엑심베이 SDK로 인증 결제창을 연다. 인증이 끝나면 엑심베이가 /eximbay/return으로 돌려보낸다.
+const token = new URLSearchParams(location.search).get('token');
+const el = document.getElementById('content');
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('엑심베이 SDK를 불러오지 못했습니다'));
+    document.head.appendChild(s);
+  });
+}
+
+function open(params) {
+  try {
+    window.EXIMBAY.request_pay(params);
+  } catch (e) {
+    el.innerHTML = `<div class="mark bad">!</div><h1>결제창을 열지 못했습니다</h1><p class="lead">${Shop.esc(e.message)}</p>
+      <a class="btn" href="/checkout.html">주문서로</a>`;
+  }
+}
+
+async function run() {
+  let data;
+  try {
+    data = await Shop.api('GET', `/eximbay/params/${encodeURIComponent(token)}`);
+    await loadScript(data.sdkUrl);
+  } catch (e) {
+    el.innerHTML = `<div class="mark bad">!</div><h1>결제를 시작할 수 없습니다</h1><p class="lead">${Shop.esc(e.message)}</p>
+      <a class="btn" href="/checkout.html">주문서로</a>`;
+    return;
+  }
+  el.innerHTML = `
+    <h1>엑심베이 결제</h1>
+    <p class="lead">${Shop.money(data.amount)} ${Shop.esc(data.currency)}</p>
+    <button class="primary btn-block" id="open">엑심베이 결제창 열기</button>
+    <p class="muted" style="font-size:13px;margin-top:14px">엑심베이 테스트 서버입니다. 실제 결제는 일어나지 않습니다.
+      카드 결제를 고르고 테스트 카드 번호(예: 4111 1111 1111 1111)와 아무 미래 날짜, 아무 CVC를 넣으세요.</p>
+    <p class="muted mono" style="font-size:12px">${Shop.esc(token)}</p>`;
+  document.getElementById('open').addEventListener('click', () => open(data.params));
+  open(data.params);
+}
+
+Shop.header('');
+run();
+</script>
+</body>
+</html>

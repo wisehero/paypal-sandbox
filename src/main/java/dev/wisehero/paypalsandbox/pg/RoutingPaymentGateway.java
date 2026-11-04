@@ -1,25 +1,27 @@
 package dev.wisehero.paypalsandbox.pg;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 주문마다 가짜 PG와 PayPal 중 하나를 고를 수 있게 하는 라우터.
- * 생성 이후에는 ID 접두어로 구분한다. 가짜 PG의 주문 ID는 FAKE-, 캡처 ID는 CAP-로 시작한다.
+ * 주문마다 PG를 고를 수 있게 하는 라우터.
+ * 생성 이후에는 PG 주문 ID 접두어로 구분한다. 엑심베이 주문은 SBX, 가짜 PG 주문은 FAKE-로 시작하고 나머지는 PayPal이다.
  */
 public class RoutingPaymentGateway implements PaymentGateway {
 
-    private final FakePaymentGateway fake;
-    private final PayPalPaymentGateway paypal;
+    private final Map<PgProvider, PgClient> clients = new EnumMap<>(PgProvider.class);
     private final PgProvider defaultProvider;
+    /** 환불할 때 캡처 ID만으로 PG를 찾기 위해 기억해 둔다. */
+    private final Map<String, PgProvider> providerByCapture = new ConcurrentHashMap<>();
 
-    public RoutingPaymentGateway(FakePaymentGateway fake, PayPalPaymentGateway paypal, PgProvider defaultProvider) {
-        if (defaultProvider == PgProvider.PAYPAL && paypal == null) {
-            throw new IllegalStateException("PG_PROVIDER=paypal이면 PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET이 필요하다");
+    public RoutingPaymentGateway(List<PgClient> clients, PgProvider defaultProvider) {
+        clients.forEach(c -> this.clients.put(c.provider(), c));
+        if (!this.clients.containsKey(defaultProvider)) {
+            throw new IllegalStateException("기본 PG " + defaultProvider + "가 설정되지 않았다. 쓸 수 있는 PG: " + this.clients.keySet());
         }
-        this.fake = fake;
-        this.paypal = paypal;
         this.defaultProvider = defaultProvider;
     }
 
@@ -28,15 +30,11 @@ public class RoutingPaymentGateway implements PaymentGateway {
     }
 
     public List<PgProvider> availableProviders() {
-        List<PgProvider> providers = new ArrayList<>(List.of(PgProvider.FAKE));
-        if (paypal != null) {
-            providers.add(PgProvider.PAYPAL);
-        }
-        return providers;
+        return List.copyOf(clients.keySet());
     }
 
     public PgOrder createOrder(PgProvider provider, String merchantOrderId, BigDecimal amount, String currency) {
-        return gateway(provider).createOrder(merchantOrderId, amount, currency);
+        return client(provider).createOrder(merchantOrderId, amount, currency);
     }
 
     @Override
@@ -46,31 +44,46 @@ public class RoutingPaymentGateway implements PaymentGateway {
 
     @Override
     public CaptureResult capture(String pgOrderId, String idempotencyKey) {
-        return gateway(providerOfOrder(pgOrderId)).capture(pgOrderId, idempotencyKey);
+        PgProvider provider = providerOfOrder(pgOrderId);
+        CaptureResult result = client(provider).capture(pgOrderId, idempotencyKey);
+        providerByCapture.put(result.captureId(), provider);
+        return result;
     }
 
     @Override
     public PgOrderSnapshot getOrder(String pgOrderId) {
-        return gateway(providerOfOrder(pgOrderId)).getOrder(pgOrderId);
+        PgProvider provider = providerOfOrder(pgOrderId);
+        PgOrderSnapshot snapshot = client(provider).getOrder(pgOrderId);
+        if (snapshot.captureId() != null) {
+            providerByCapture.put(snapshot.captureId(), provider);
+        }
+        return snapshot;
     }
 
     @Override
     public void refund(String captureId, String idempotencyKey) {
-        PgProvider provider = captureId.startsWith("CAP-") ? PgProvider.FAKE : PgProvider.PAYPAL;
-        gateway(provider).refund(captureId, idempotencyKey);
+        PgProvider provider = providerByCapture.get(captureId);
+        if (provider == null) {
+            throw new IllegalStateException("어느 PG의 캡처인지 모른다. 먼저 PG 주문을 조회한다: " + captureId);
+        }
+        client(provider).refund(captureId, idempotencyKey);
     }
 
     public static PgProvider providerOfOrder(String pgOrderId) {
-        return pgOrderId.startsWith("FAKE-") ? PgProvider.FAKE : PgProvider.PAYPAL;
+        if (pgOrderId.startsWith("FAKE-")) {
+            return PgProvider.FAKE;
+        }
+        if (pgOrderId.startsWith(EximbayPaymentGateway.ORDER_PREFIX)) {
+            return PgProvider.EXIMBAY;
+        }
+        return PgProvider.PAYPAL;
     }
 
-    private PaymentGateway gateway(PgProvider provider) {
-        if (provider == PgProvider.FAKE) {
-            return fake;
+    private PgClient client(PgProvider provider) {
+        PgClient client = clients.get(provider);
+        if (client == null) {
+            throw new IllegalStateException(provider + " PG가 설정되지 않았다. 쓸 수 있는 PG: " + clients.keySet());
         }
-        if (paypal == null) {
-            throw new IllegalStateException("PayPal 키가 설정되지 않았다. .env에 PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET을 넣고 다시 실행한다");
-        }
-        return paypal;
+        return client;
     }
 }

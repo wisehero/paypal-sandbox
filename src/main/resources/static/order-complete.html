@@ -19,7 +19,7 @@
 <script>
 const orderId = Number(new URLSearchParams(location.search).get('orderId'));
 const STRATEGY = { IN_TX: '트랜잭션 안', SPLIT: '트랜잭션 분리' };
-const PG_NAME = { FAKE: '테스트 결제 (가짜 PG)', PAYPAL: 'PayPal' };
+const PG_NAME = { EXIMBAY: '엑심베이', PAYPAL: 'PayPal', FAKE: '가짜 PG' };
 const ORDER_STATUS = {
   CREATED: ['주문 생성 (결제 기록 없음)', 'st-bad'],
   PAYMENT_IN_PROGRESS: ['결제 중', 'st-warn'],

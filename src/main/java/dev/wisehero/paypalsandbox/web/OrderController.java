@@ -73,7 +73,7 @@ class OrderController {
         return "구매자가 승인을 취소했다. PayPal 주문: " + pgOrderId;
     }
 
-    /** pg: fake 또는 paypal. 비우면 기본 PG. */
+    /** pg: eximbay 또는 paypal. 비우면 기본 PG. */
     record CreateOrderRequest(@NotNull Long productId, @Min(1) int quantity, String pg) {
     }
 }

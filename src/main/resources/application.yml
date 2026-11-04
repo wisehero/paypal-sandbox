@@ -19,10 +19,8 @@ spring:
       enabled: true
 
 pg:
-  # 주문을 만들 때 PG를 고르지 않으면 쓰는 기본값.
-  # fake: 로컬 가짜 PG (구매자 승인 생략, 장애 주입 실험용)
-  # paypal: PayPal 샌드박스. 키를 넣으면 화면에서 주문마다 고를 수 있다.
-  provider: ${PG_PROVIDER:fake}
+  # 주문을 만들 때 PG를 고르지 않으면 쓰는 기본값. eximbay 또는 paypal.
+  provider: ${PG_PROVIDER:eximbay}
   paypal:
     base-url: https://api-m.sandbox.paypal.com
     client-id: ${PAYPAL_CLIENT_ID:}
@@ -30,6 +28,17 @@ pg:
     webhook-id: ${PAYPAL_WEBHOOK_ID:}
     return-url: ${PAYPAL_RETURN_URL:http://localhost:8080/checkout-return.html}
     cancel-url: ${PAYPAL_CANCEL_URL:http://localhost:8080/checkout.html?cancelled=1}
+    connect-timeout: 3s
+    read-timeout: 10s
+  eximbay:
+    base-url: ${EXIMBAY_BASE_URL:https://api-test.eximbay.com}
+    # 기본값은 엑심베이 개발자 문서에 공개된 공용 테스트 가맹점이다. 계약 전에도 테스트할 수 있다.
+    mid: ${EXIMBAY_MID:1849705C64}
+    api-key: ${EXIMBAY_API_KEY:test_1849705C642C217E0B2D}
+    return-url: ${EXIMBAY_RETURN_URL:http://localhost:8080/eximbay/return}
+    # 엑심베이 서버가 직접 부르는 주소라 localhost로는 받을 수 없다. 받으려면 터널 주소로 바꾼다.
+    status-url: ${EXIMBAY_STATUS_URL:http://localhost:8080/eximbay/status}
+    lang: EN
     connect-timeout: 3s
     read-timeout: 10s
 

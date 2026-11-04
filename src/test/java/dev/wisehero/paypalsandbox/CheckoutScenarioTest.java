@@ -16,6 +16,7 @@ import dev.wisehero.paypalsandbox.order.PurchaseOrderRepository;
 import dev.wisehero.paypalsandbox.payment.OutboxEventRepository;
 import dev.wisehero.paypalsandbox.payment.PaymentRecordRepository;
 import dev.wisehero.paypalsandbox.pg.FakePaymentGateway;
+import dev.wisehero.paypalsandbox.pg.FakePgConfig;
 import dev.wisehero.paypalsandbox.pg.PgDeclinedException;
 import dev.wisehero.paypalsandbox.pg.PgProvider;
 import dev.wisehero.paypalsandbox.pg.PgTimeoutException;
@@ -29,13 +30,15 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 같은 장애를 두 구조에 똑같이 주입하고 결과를 비교한다.
  * PG는 메모리 안의 가짜 PG를 쓴다.
  */
-@SpringBootTest
+@SpringBootTest(properties = "pg.provider=fake")
+@Import(FakePgConfig.class)
 class CheckoutScenarioTest {
 
     @Autowired

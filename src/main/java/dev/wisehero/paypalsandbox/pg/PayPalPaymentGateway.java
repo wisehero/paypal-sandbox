@@ -22,7 +22,7 @@ import org.springframework.web.client.RestClientResponseException;
  * 캡처 요청에는 PayPal-Request-Id 헤더로 멱등 키를 넘긴다. 같은 키로 다시 요청하면
  * PayPal은 새로 결제하지 않고 처음 응답을 돌려준다.
  */
-public class PayPalPaymentGateway implements PaymentGateway {
+public class PayPalPaymentGateway implements PgClient {
 
     private final PayPalProperties properties;
     private final FaultInjector faults;
@@ -44,6 +44,11 @@ public class PayPalPaymentGateway implements PaymentGateway {
                 .baseUrl(properties.baseUrl())
                 .requestFactory(requestFactory)
                 .build();
+    }
+
+    @Override
+    public PgProvider provider() {
+        return PgProvider.PAYPAL;
     }
 
     @Override

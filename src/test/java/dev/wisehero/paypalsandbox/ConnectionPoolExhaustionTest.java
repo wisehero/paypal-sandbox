@@ -7,6 +7,7 @@ import dev.wisehero.paypalsandbox.checkout.OrderService;
 import dev.wisehero.paypalsandbox.fault.FaultInjector;
 import dev.wisehero.paypalsandbox.order.CaptureStrategy;
 import dev.wisehero.paypalsandbox.order.OrderStatus;
+import dev.wisehero.paypalsandbox.pg.FakePgConfig;
 import dev.wisehero.paypalsandbox.product.Product;
 import dev.wisehero.paypalsandbox.product.ProductRepository;
 import java.math.BigDecimal;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -27,10 +29,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 결제 2건이 동시에 PG를 기다리는 동안 결제와 상관없는 조회가 커넥션을 얻을 수 있는지 본다.
  */
 @SpringBootTest(properties = {
+        "pg.provider=fake",
         "spring.datasource.url=jdbc:h2:mem:pool-test;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000",
         "spring.datasource.hikari.maximum-pool-size=2",
         "spring.datasource.hikari.connection-timeout=300"
 })
+@Import(FakePgConfig.class)
 class ConnectionPoolExhaustionTest {
 
     private static final Duration PG_DELAY = Duration.ofMillis(1500);

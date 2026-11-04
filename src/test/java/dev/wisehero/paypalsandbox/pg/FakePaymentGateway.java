@@ -7,11 +7,11 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 메모리 안에서 도는 가짜 PG.
+ * 자동 테스트 전용 가짜 PG. 메모리 안에서 돈다.
  * 구매자 승인 단계를 생략해서 주문을 만들면 바로 APPROVED 상태가 된다.
  * 장애 주입으로 지연, 결제 후 타임아웃, 거절을 흉내 낸다.
  */
-public class FakePaymentGateway implements PaymentGateway {
+public class FakePaymentGateway implements PgClient {
 
     private final FaultInjector faults;
     private final Map<String, FakeOrder> orders = new ConcurrentHashMap<>();
@@ -22,11 +22,15 @@ public class FakePaymentGateway implements PaymentGateway {
     }
 
     @Override
+    public PgProvider provider() {
+        return PgProvider.FAKE;
+    }
+
+    @Override
     public PgOrder createOrder(String merchantOrderId, BigDecimal amount, String currency) {
         String pgOrderId = "FAKE-" + UUID.randomUUID();
         orders.put(pgOrderId, new FakeOrder(amount, currency));
-        // PayPal과 같은 흐름을 타도록 가짜 승인 화면 주소를 돌려준다. 캡처에 승인이 필수는 아니다.
-        return new PgOrder(pgOrderId, "/fake-pg.html?token=" + pgOrderId);
+        return new PgOrder(pgOrderId, null);
     }
 
     @Override

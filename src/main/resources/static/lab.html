@@ -122,20 +122,6 @@
   .st.bad { color: var(--bad); }
   .st.muted { color: var(--muted); }
 
-  .pool { display: flex; gap: 4px; margin: 8px 0 4px; flex-wrap: wrap; }
-  .slot { width: 22px; height: 22px; border: 1px solid var(--line-strong); border-radius: 3px; }
-  .slot.on { background: var(--fill); border-color: var(--fill); }
-  .pool-text { font-size: 12px; color: var(--muted); }
-  .pool-text b { color: var(--text); font-weight: 500; }
-  .pool-text .bad { color: var(--bad); }
-
-  .probes { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px; min-height: 18px; }
-  .probe { width: 12px; height: 18px; border-radius: 2px; background: var(--line); }
-  .probe.ok { background: var(--ok); }
-  .probe.bad { background: var(--bad); }
-  .probe.wait { background: var(--line-strong); }
-  .exp-result { margin-top: 10px; font-size: 12px; }
-  .exp-result table { font-size: 12px; }
 
   #log { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 12px; max-height: 340px; overflow-y: auto; }
   #log li { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -182,28 +168,6 @@
       <p class="hint">켜 두면 끌 때까지 모든 캡처에 적용됩니다. PayPal 주문에도 똑같이 적용됩니다.</p>
     </section>
 
-    <section>
-      <h2>동시 결제 실험</h2>
-      <p class="hint" style="margin:0 0 10px">같은 상품을 가짜 PG로 여러 건 동시에 캡처하고, 그동안 결제와 상관없는 상품 조회가 되는지 지켜봅니다.</p>
-      <div class="row">
-        <label class="field"><span>구조</span>
-          <select id="e-strategy">
-            <option value="in-tx">트랜잭션 안</option>
-            <option value="split">트랜잭션 분리</option>
-          </select>
-        </label>
-        <label class="field"><span>건수</span><input type="number" id="e-count" min="1" max="20" value="5"></label>
-      </div>
-      <label class="field"><span>PG 응답 지연 (ms)</span><input type="number" id="e-delay" min="0" step="500" value="3000"></label>
-      <div class="actions"><button class="primary" id="e-run">실행</button></div>
-      <p class="hint" id="e-hint"></p>
-
-      <div class="pool" id="pool"></div>
-      <div class="pool-text" id="pool-text"></div>
-      <div class="probes" id="probes"></div>
-      <div class="pool-text" id="probe-text"></div>
-      <div class="exp-result" id="exp-result"></div>
-    </section>
   </aside>
 
   <div>
@@ -246,7 +210,7 @@ const PG_STATUS = {
   UNKNOWN: ['알 수 없음', 'muted'],
 };
 const STRATEGY = { IN_TX: '트랜잭션 안', SPLIT: '분리' };
-const PG_NAME = { FAKE: '가짜 PG', PAYPAL: 'PayPal' };
+const PG_NAME = { EXIMBAY: '엑심베이', PAYPAL: 'PayPal', FAKE: '가짜 PG' };
 
 const state = {
   config: null,
@@ -256,7 +220,6 @@ const state = {
   pgStatus: {},
   busy: new Set(),
   highlight: null,
-  experimentRunning: false,
 };
 
 function esc(v) {
@@ -323,28 +286,23 @@ function notify(kind, html) {
 
 async function loadConfig() {
   state.config = await api('GET', '/config', null, { log: false });
-  const pgs = state.config.availablePgs;
+  const pgs = state.config.availablePgs.filter((p) => p !== 'FAKE');
   $('#pg-choice').innerHTML = pgs.map((p) => `<label><input type="radio" name="pg" value="${p}"`
     + `${p === state.config.defaultPg ? ' checked' : ''}>${PG_NAME[p]}</label>`).join('');
   $('#pg-choice').addEventListener('change', updatePgHint);
   updatePgHint();
-  $('#e-count').value = state.config.poolSize;
-  // PG 지연이 커넥션 대기 제한보다 길어야 대기하던 조회가 실패하는 장면이 보인다.
-  $('#e-delay').value = state.config.connectionTimeoutMs + 2000;
-  $('#e-hint').textContent = `커넥션 풀 ${state.config.poolSize}개, 커넥션 대기 제한 ${state.config.connectionTimeoutMs}ms입니다. `
-    + 'PG 지연을 대기 제한보다 길게 잡아야 차이가 잘 보입니다. 트랜잭션 안 구조는 같은 상품 행 락도 함께 기다려서 결제가 한 건씩 줄을 섭니다.';
   renderMeta();
 }
 
 function selectedPg() {
   const el = document.querySelector('input[name=pg]:checked');
-  return el ? el.value : 'FAKE';
+  return el ? el.value : state.config.defaultPg;
 }
 
 function updatePgHint() {
   $('#pg-hint').textContent = selectedPg() === 'PAYPAL'
     ? 'PayPal 주문은 승인 링크에서 샌드박스 Personal(구매자) 계정으로 승인해야 캡처할 수 있습니다. 판매자 계정 로그인이 남아 있으면 시크릿 창을 쓰세요.'
-    : '가짜 PG는 구매자 승인 단계를 건너뜁니다. 주문을 만들면 바로 캡처할 수 있습니다.';
+    : '엑심베이 주문은 승인 링크에서 테스트 카드로 인증해야 캡처할 수 있습니다. 인증이 끝나면 이 화면으로 돌아옵니다.';
 }
 
 function renderMeta() {
@@ -390,6 +348,7 @@ function linesText(o) {
 }
 
 function approveUrl(order) {
+  if (order.pgProvider === 'EXIMBAY') return `/eximbay-pay.html?token=${encodeURIComponent(order.pgOrderId)}`;
   return `https://www.sandbox.paypal.com/checkoutnow?token=${encodeURIComponent(order.pgOrderId)}`;
 }
 
@@ -411,7 +370,7 @@ function renderOrders() {
     const busy = state.busy.has(o.id);
     const acts = [];
     if (o.status === 'CREATED' && o.pgOrderId) {
-      if (o.pgProvider === 'PAYPAL' && (!pg || pg.status === 'CREATED')) {
+      if (o.pgProvider !== 'FAKE' && (!pg || pg.status === 'CREATED')) {
         acts.push(`<a href="${approveUrl(o)}" target="_blank" rel="noopener"><button class="small">승인 링크</button></a>`);
       }
       acts.push(`<button class="small" data-act="capture" data-strategy="in-tx" data-id="${o.id}" ${busy ? 'disabled' : ''}>트랜잭션 안 캡처</button>`);
@@ -451,8 +410,8 @@ async function createOrder() {
   try {
     const created = await api('POST', '/orders', body);
     state.highlight = created.orderId;
-    if (selectedPg() === 'PAYPAL' && created.approveUrl) {
-      notify('info', `주문 #${created.orderId} 생성. PayPal 승인이 필요합니다. `
+    if (created.approveUrl) {
+      notify('info', `주문 #${created.orderId} 생성. 구매자 승인이 필요합니다. `
         + `<a href="${esc(created.approveUrl)}" target="_blank" rel="noopener"><button class="small">승인 링크 열기</button></a>`
         + ' 승인을 마치면 이 화면으로 돌아옵니다.');
     } else {
@@ -576,112 +535,6 @@ async function resetFaults() {
   await loadFaults();
 }
 
-/* ---------- 커넥션 풀, 동시 결제 실험 ---------- */
-
-let poolPeak = 0;
-
-function renderPool(p) {
-  $('#pool').innerHTML = Array.from({ length: p.max }, (_, i) => `<div class="slot ${i < p.active ? 'on' : ''}"></div>`).join('');
-  poolPeak = Math.max(poolPeak, p.active);
-  $('#pool-text').innerHTML = `사용 중 <b>${p.active}</b> / ${p.max}, 커넥션 대기 스레드 `
-    + `<b class="${p.waiting > 0 ? 'bad' : ''}">${p.waiting}</b>`;
-}
-
-async function pollPool() {
-  try {
-    renderPool(await api('GET', '/experiments/pool', null, { log: false }));
-  } catch { /* 무시 */ }
-}
-
-async function runExperiment() {
-  const body = {
-    productId: Number($('#product').value) || state.products[0].id,
-    strategy: $('#e-strategy').value,
-    count: Number($('#e-count').value),
-    pgDelayMs: Number($('#e-delay').value),
-  };
-  $('#e-run').disabled = true;
-  state.experimentRunning = true;
-  poolPeak = 0;
-  const probes = [];
-  $('#probes').innerHTML = '';
-  $('#probe-text').textContent = '';
-  $('#exp-result').innerHTML = '';
-
-  let run;
-  try {
-    run = await api('POST', '/experiments/concurrent-captures', body);
-  } catch (e) {
-    notify('bad', `실험 시작 실패: ${esc(e.message)}`);
-    $('#e-run').disabled = false;
-    state.experimentRunning = false;
-    return;
-  }
-
-  let inflight = 0;
-  let finishedAt = null;
-  const renderProbes = () => {
-    $('#probes').innerHTML = probes.slice(-120).map((p) => `<div class="probe ${p.state}" title="${p.state === 'wait' ? '응답 대기' : p.ms + 'ms'}"></div>`).join('');
-    const done = probes.filter((p) => p.state !== 'wait');
-    const fail = done.filter((p) => p.state === 'bad').length;
-    const max = done.reduce((m, p) => Math.max(m, p.ms), 0);
-    $('#probe-text').innerHTML = `상품 조회 <b>${done.length}</b>회, 실패 <b class="${fail ? 'bad' : ''}">${fail}</b>회, 가장 느린 응답 <b>${max}ms</b>`;
-  };
-
-  const probe = async () => {
-    // 결제가 모두 끝나고 1초가 지나면 새 조회를 띄우지 않는다.
-    if (inflight >= 2 || (finishedAt && performance.now() - finishedAt > 1000)) return;
-    inflight++;
-    const p = { state: 'wait', ms: 0 };
-    probes.push(p);
-    renderProbes();
-    const t0 = performance.now();
-    try {
-      const res = await fetch('/products');
-      p.state = res.ok ? 'ok' : 'bad';
-    } catch {
-      p.state = 'bad';
-    }
-    p.ms = Math.round(performance.now() - t0);
-    inflight--;
-    renderProbes();
-  };
-
-  const tick = setInterval(async () => {
-    pollPool();
-    probe();
-    try {
-      run = await api('GET', `/experiments/concurrent-captures/${run.id}`, null, { log: false });
-    } catch { /* 무시 */ }
-    renderRun(run);
-    const finished = Object.values(run.outcomes).every((o) => o.result !== 'RUNNING');
-    if (finished && !finishedAt) finishedAt = performance.now();
-    if (finishedAt && performance.now() - finishedAt > 1000 && inflight === 0) {
-      clearInterval(tick);
-      state.experimentRunning = false;
-      $('#e-run').disabled = false;
-      const fail = probes.filter((p) => p.state === 'bad').length;
-      addLog('EXP', `동시 결제 ${body.count}건 (${body.strategy}, PG ${body.pgDelayMs}ms)`, 200, 0,
-        `최대 커넥션 사용 ${poolPeak}/${state.config.poolSize}, 상품 조회 실패 ${fail}회`);
-      notify(fail ? 'bad' : 'ok', fail
-        ? `${body.strategy === 'in-tx' ? '트랜잭션 안' : '분리'} 구조: 결제가 PG를 기다리는 동안 커넥션을 쥐고 있어서 상품 조회가 ${fail}회 실패했습니다.`
-        : `${body.strategy === 'in-tx' ? '트랜잭션 안' : '분리'} 구조: 결제가 PG를 기다리는 동안에도 상품 조회가 모두 성공했습니다.`);
-      refresh();
-      loadFaults();
-    }
-  }, 300);
-}
-
-function renderRun(run) {
-  const rows = Object.entries(run.outcomes).sort((a, b) => a[0] - b[0]).map(([id, o]) => {
-    const cls = o.result === 'PAID' ? 'ok' : o.result === 'RUNNING' ? 'warn' : 'bad';
-    const label = o.result === 'RUNNING' ? '처리 중' : (STATUS[o.result] || [o.result])[0];
-    return `<tr><td>#${id}</td><td><span class="st ${cls}">${esc(label === 'ERROR' ? '오류' : label)}</span>`
-      + `${o.error ? `<span class="sub">${esc(o.error.slice(0, 140))}</span>` : ''}</td><td>${o.elapsedMs != null ? o.elapsedMs + 'ms' : ''}</td></tr>`;
-  }).join('');
-  $('#exp-result').innerHTML = `<table><thead><tr><th>주문</th><th>결과</th><th>걸린 시간</th></tr></thead><tbody>${rows}</tbody></table>`;
-}
-
 /* ---------- PayPal 승인 후 돌아왔을 때 ---------- */
 
 async function handleReturn() {
@@ -718,7 +571,6 @@ document.addEventListener('click', (e) => {
 $('#create').addEventListener('click', createOrder);
 $('#f-apply').addEventListener('click', applyFaults);
 $('#f-reset').addEventListener('click', resetFaults);
-$('#e-run').addEventListener('click', runExperiment);
 $('#check-all-pg').addEventListener('click', checkAllPg);
 $('#reconcile-all').addEventListener('click', reconcileAll);
 $('#diagnose').addEventListener('click', diagnose);
@@ -726,10 +578,9 @@ $('#clear-log').addEventListener('click', () => { $('#log').innerHTML = ''; });
 
 (async function init() {
   await loadConfig();
-  await Promise.all([refresh(), loadFaults(), pollPool()]);
+  await Promise.all([refresh(), loadFaults()]);
   await handleReturn();
-  setInterval(() => { if (!state.experimentRunning) refresh(); }, 2000);
-  setInterval(() => { if (!state.experimentRunning) pollPool(); }, 1000);
+  setInterval(refresh, 2000);
 })();
 </script>
 </body>

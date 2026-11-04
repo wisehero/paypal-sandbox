@@ -18,8 +18,9 @@
 <script>
 const params = new URLSearchParams(location.search);
 if (params.get('cancelled')) {
+  const reason = params.get('reason');
   document.getElementById('cancel-notice').innerHTML =
-    '<div class="notice warn">결제를 취소했습니다. 장바구니는 그대로 남아 있습니다.</div>';
+    `<div class="notice warn">결제를 마치지 못했습니다. 장바구니는 그대로 남아 있습니다.${reason ? '<br>' + Shop.esc(reason) : ''}</div>`;
   history.replaceState(null, '', '/checkout.html');
 }
 
@@ -34,7 +35,20 @@ async function load() {
     return;
   }
   const total = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
-  const paypal = config.availablePgs.includes('PAYPAL');
+  const PG_OPTIONS = {
+    EXIMBAY: ['엑심베이', '엑심베이 테스트 결제창에서 카드 인증을 합니다. 지금은 공용 테스트 가맹점의 결제창이 VE00(Invalid fgkey)을 내서 결제를 끝낼 수 없습니다.'],
+    PAYPAL: ['PayPal', 'PayPal 샌드박스 화면에서 Personal(구매자) 테스트 계정으로 로그인해 승인합니다.'],
+    FAKE: ['가짜 PG', '자동 테스트용입니다.'],
+  };
+  const pgs = ['EXIMBAY', 'PAYPAL'].filter((p) => config.availablePgs.includes(p));
+  const defaultPg = pgs.includes(config.defaultPg) ? config.defaultPg : pgs[0];
+  const pgHtml = pgs.length ? pgs.map((p) => `
+        <label class="option">
+          <input type="radio" name="pg" value="${p.toLowerCase()}" ${p === defaultPg ? 'checked' : ''}>
+          <span><b>${PG_OPTIONS[p][0]}</b><small>${PG_OPTIONS[p][1]}</small></span>
+        </label>`).join('') : '<p class="muted">쓸 수 있는 PG가 없습니다. 설정을 확인하세요.</p>';
+  const paypalHint = config.availablePgs.includes('PAYPAL') ? ''
+    : '<p class="muted" style="font-size:13px;margin:8px 0 0">PayPal은 .env에 키를 넣고 다시 실행하면 나타납니다.</p>';
 
   el.innerHTML = `
   <div class="two-col">
@@ -51,16 +65,7 @@ async function load() {
 
       <div class="box">
         <h2>결제 수단</h2>
-        <label class="option">
-          <input type="radio" name="pg" value="paypal" ${paypal ? 'checked' : 'disabled'}>
-          <span><b>PayPal</b><small>${paypal
-            ? 'PayPal 샌드박스 화면에서 Personal(구매자) 테스트 계정으로 로그인해 승인합니다.'
-            : 'PayPal 키가 없어 쓸 수 없습니다. .env에 키를 넣고 다시 실행하세요.'}</small></span>
-        </label>
-        <label class="option">
-          <input type="radio" name="pg" value="fake" ${paypal ? '' : 'checked'}>
-          <span><b>테스트 결제</b><small>로컬 가짜 PG입니다. 승인 화면을 거치지만 외부로 나가는 요청은 없습니다.</small></span>
-        </label>
+        ${pgHtml}${paypalHint}
       </div>
 
       <div class="box lab">
@@ -89,6 +94,7 @@ async function load() {
     </div>
   </div>`;
 
+  document.getElementById('pay').disabled = !pgs.length;
   document.getElementById('pay').addEventListener('click', () => pay(items));
 }
 
