@@ -3,6 +3,9 @@ package dev.wisehero.paypalsandbox.web;
 import dev.wisehero.paypalsandbox.checkout.OrderService;
 import dev.wisehero.paypalsandbox.order.CaptureStrategy;
 import dev.wisehero.paypalsandbox.order.PurchaseOrder;
+import dev.wisehero.paypalsandbox.pg.PaymentGateway;
+import dev.wisehero.paypalsandbox.pg.PgProvider;
+import java.util.List;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -27,7 +30,9 @@ class OrderController {
 
     @PostMapping
     OrderService.CreatedOrder create(@Valid @RequestBody CreateOrderRequest request) {
-        return orderService.create(request.productId(), request.quantity());
+        return request.pg() == null
+                ? orderService.create(request.productId(), request.quantity())
+                : orderService.create(request.productId(), request.quantity(), PgProvider.from(request.pg()));
     }
 
     @PostMapping("/{orderId}/capture")
@@ -35,9 +40,20 @@ class OrderController {
         return orderService.capture(orderId, CaptureStrategy.from(strategy));
     }
 
+    @GetMapping
+    List<PurchaseOrder> list() {
+        return orderService.list();
+    }
+
     @GetMapping("/{orderId}")
     PurchaseOrder get(@PathVariable Long orderId) {
         return orderService.get(orderId);
+    }
+
+    /** PG 쪽 실제 상태. 우리 주문 상태와 비교할 때 쓴다. */
+    @GetMapping("/{orderId}/pg")
+    PaymentGateway.PgOrderSnapshot pg(@PathVariable Long orderId) {
+        return orderService.pgSnapshot(orderId);
     }
 
     /** PayPal 승인 후 돌아오는 주소. PayPal이 token 파라미터로 PG 주문 ID를 넘긴다. */
@@ -57,6 +73,7 @@ class OrderController {
         return "구매자가 승인을 취소했다. PayPal 주문: " + pgOrderId;
     }
 
-    record CreateOrderRequest(@NotNull Long productId, @Min(1) int quantity) {
+    /** pg: fake 또는 paypal. 비우면 기본 PG. */
+    record CreateOrderRequest(@NotNull Long productId, @Min(1) int quantity, String pg) {
     }
 }

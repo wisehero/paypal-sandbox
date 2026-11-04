@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>실험 콘솔</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #fafafa;
+    --text: #1f2328;
+    --muted: #656d76;
+    --line: #d8dee4;
+    --line-strong: #8c959f;
+    --ok: #1a7f37;
+    --ok-bg: #dafbe1;
+    --warn: #9a6700;
+    --warn-bg: #fff8c5;
+    --bad: #cf222e;
+    --bad-bg: #ffebe9;
+    --fill: #1f2328;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --text: #e6edf3;
+      --muted: #8d96a0;
+      --line: #30363d;
+      --line-strong: #6e7681;
+      --ok: #3fb950;
+      --ok-bg: #12261e;
+      --warn: #d29922;
+      --warn-bg: #272115;
+      --bad: #f85149;
+      --bad-bg: #2d1214;
+      --fill: #e6edf3;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", sans-serif;
+  }
+  header { border-bottom: 1px solid var(--line); padding: 16px 24px; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--text); font-weight: 500; }
+  .fault-alert { color: var(--bad); font-weight: 500; }
+  main {
+    display: grid;
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    gap: 0;
+    min-height: calc(100vh - 90px);
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  aside { border-right: 1px solid var(--line); }
+  @media (max-width: 900px) { aside { border-right: 0; } }
+  section { padding: 16px 24px; border-bottom: 1px solid var(--line); }
+  @media (max-width: 600px) { section, header { padding-left: 16px; padding-right: 16px; } }
+  h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .spacer { flex: 1; }
+  .hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+  label.field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  label.field > span { display: block; margin-bottom: 3px; }
+  select, input[type=number] {
+    width: 100%;
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 5px 8px;
+  }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .check { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
+  .radio-group { display: flex; gap: 14px; font-size: 13px; }
+  .radio-group label { display: flex; align-items: center; gap: 5px; }
+  button {
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover:not(:disabled) { background: var(--surface); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--fill); color: var(--bg); border-color: var(--fill); }
+  button.primary:hover:not(:disabled) { background: var(--fill); opacity: .85; }
+  button.small { font-size: 12px; padding: 2px 7px; }
+  .actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  a { color: inherit; }
+
+  .notice { padding: 10px 24px; font-size: 13px; border-bottom: 1px solid var(--line); display: none; }
+  .notice.show { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .notice.ok { background: var(--ok-bg); color: var(--ok); }
+  .notice.bad { background: var(--bad-bg); color: var(--bad); }
+  .notice.info { background: var(--surface); }
+
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-weight: 500; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  td.mono, .mono { font-family: var(--mono); font-size: 12px; }
+  td .sub { display: block; color: var(--muted); font-size: 11px; }
+  tr.mismatch td { background: var(--bad-bg); }
+  tr.highlight td { outline: 0; background: var(--warn-bg); }
+  .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+
+  .st { font-weight: 500; white-space: nowrap; }
+  .st.ok { color: var(--ok); }
+  .st.warn { color: var(--warn); }
+  .st.bad { color: var(--bad); }
+  .st.muted { color: var(--muted); }
+
+  .pool { display: flex; gap: 4px; margin: 8px 0 4px; flex-wrap: wrap; }
+  .slot { width: 22px; height: 22px; border: 1px solid var(--line-strong); border-radius: 3px; }
+  .slot.on { background: var(--fill); border-color: var(--fill); }
+  .pool-text { font-size: 12px; color: var(--muted); }
+  .pool-text b { color: var(--text); font-weight: 500; }
+  .pool-text .bad { color: var(--bad); }
+
+  .probes { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px; min-height: 18px; }
+  .probe { width: 12px; height: 18px; border-radius: 2px; background: var(--line); }
+  .probe.ok { background: var(--ok); }
+  .probe.bad { background: var(--bad); }
+  .probe.wait { background: var(--line-strong); }
+  .exp-result { margin-top: 10px; font-size: 12px; }
+  .exp-result table { font-size: 12px; }
+
+  #log { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 12px; max-height: 340px; overflow-y: auto; }
+  #log li { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  #log .t { color: var(--muted); }
+  #log .path { overflow-wrap: anywhere; }
+  #log .sum { grid-column: 2 / 4; color: var(--muted); overflow-wrap: anywhere; }
+  #log .code.ok { color: var(--ok); }
+  #log .code.bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>실험 콘솔 <a href="/" style="font-size:13px;font-weight:400;margin-left:10px">쇼핑 화면으로</a></h1>
+  <p>PG 호출을 DB 트랜잭션 안에 넣을 때와 밖으로 뺄 때의 차이를 직접 실행해서 비교합니다.</p>
+  <div class="meta" id="meta"></div>
+</header>
+<div class="notice" id="notice"></div>
+
+<main>
+  <aside>
+    <section>
+      <h2>주문 생성</h2>
+      <label class="field"><span>상품</span><select id="product"></select></label>
+      <div class="row">
+        <label class="field"><span>수량</span><input type="number" id="quantity" min="1" value="1"></label>
+        <label class="field"><span>PG</span>
+          <div class="radio-group" id="pg-choice" style="padding-top:5px"></div>
+        </label>
+      </div>
+      <div class="actions"><button class="primary" id="create">주문 생성</button></div>
+      <p class="hint" id="pg-hint"></p>
+    </section>
+
+    <section>
+      <h2>장애 주입</h2>
+      <label class="field"><span>PG 응답 지연 (ms)</span><input type="number" id="f-delay" min="0" step="500" value="0"></label>
+      <label class="check"><input type="checkbox" id="f-timeout">PG 캡처 뒤 응답 타임아웃</label>
+      <label class="check"><input type="checkbox" id="f-db">PG 캡처 뒤 DB 반영 실패</label>
+      <label class="check"><input type="checkbox" id="f-decline">PG 결제 거절</label>
+      <div class="actions">
+        <button id="f-apply">적용</button>
+        <button id="f-reset">모두 끄기</button>
+      </div>
+      <p class="hint">켜 두면 끌 때까지 모든 캡처에 적용됩니다. PayPal 주문에도 똑같이 적용됩니다.</p>
+    </section>
+
+    <section>
+      <h2>동시 결제 실험</h2>
+      <p class="hint" style="margin:0 0 10px">같은 상품을 가짜 PG로 여러 건 동시에 캡처하고, 그동안 결제와 상관없는 상품 조회가 되는지 지켜봅니다.</p>
+      <div class="row">
+        <label class="field"><span>구조</span>
+          <select id="e-strategy">
+            <option value="in-tx">트랜잭션 안</option>
+            <option value="split">트랜잭션 분리</option>
+          </select>
+        </label>
+        <label class="field"><span>건수</span><input type="number" id="e-count" min="1" max="20" value="5"></label>
+      </div>
+      <label class="field"><span>PG 응답 지연 (ms)</span><input type="number" id="e-delay" min="0" step="500" value="3000"></label>
+      <div class="actions"><button class="primary" id="e-run">실행</button></div>
+      <p class="hint" id="e-hint"></p>
+
+      <div class="pool" id="pool"></div>
+      <div class="pool-text" id="pool-text"></div>
+      <div class="probes" id="probes"></div>
+      <div class="pool-text" id="probe-text"></div>
+      <div class="exp-result" id="exp-result"></div>
+    </section>
+  </aside>
+
+  <div>
+    <section>
+      <h2>주문 목록 <span class="spacer"></span>
+        <button class="small" id="check-all-pg">PG 상태 전체 조회</button>
+        <button class="small" id="reconcile-all">결제 중 주문 대사</button>
+      </h2>
+      <div class="table-wrap"><table id="orders"></table></div>
+      <p class="hint">PG 상태가 결제 완료인데 주문 상태가 결제 완료가 아니면 빨간 줄로 표시합니다. 고객 돈은 빠져나갔는데 주문은 없는 상태입니다.</p>
+    </section>
+
+    <section>
+      <h2>불일치 진단 <span class="spacer"></span><button class="small" id="diagnose">진단 실행</button></h2>
+      <div id="mismatches" class="empty">아직 실행하지 않았습니다. 결제 완료가 아닌 주문마다 PG를 조회합니다.</div>
+    </section>
+
+    <section>
+      <h2>호출 기록 <span class="spacer"></span><button class="small" id="clear-log">지우기</button></h2>
+      <ul id="log"></ul>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const STATUS = {
+  CREATED: ['주문 생성', 'muted'],
+  PAYMENT_IN_PROGRESS: ['결제 중', 'warn'],
+  PAYMENT_UNKNOWN: ['결과 모름', 'warn'],
+  PAID: ['결제 완료', 'ok'],
+  PAYMENT_FAILED: ['결제 실패', 'bad'],
+  REFUNDED: ['환불', 'muted'],
+};
+const PG_STATUS = {
+  CREATED: ['승인 대기', 'muted'],
+  APPROVED: ['승인 완료', 'warn'],
+  COMPLETED: ['결제 완료', 'ok'],
+  VOIDED: ['취소', 'muted'],
+  UNKNOWN: ['알 수 없음', 'muted'],
+};
+const STRATEGY = { IN_TX: '트랜잭션 안', SPLIT: '분리' };
+const PG_NAME = { FAKE: '가짜 PG', PAYPAL: 'PayPal' };
+
+const state = {
+  config: null,
+  products: [],
+  orders: [],
+  faults: null,
+  pgStatus: {},
+  busy: new Set(),
+  highlight: null,
+  experimentRunning: false,
+};
+
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function api(method, path, body, { log = true } = {}) {
+  const t0 = performance.now();
+  let res;
+  try {
+    res = await fetch(path, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    if (log) addLog(method, path, 0, Math.round(performance.now() - t0), String(e));
+    throw e;
+  }
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  const ms = Math.round(performance.now() - t0);
+  if (log) addLog(method, path, res.status, ms, summarize(data));
+  if (!res.ok) {
+    const err = new Error((data && data.detail) || res.statusText);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function summarize(data) {
+  if (data == null) return '';
+  if (typeof data === 'string') return data.slice(0, 160);
+  if (data.detail) return data.detail;
+  if (Array.isArray(data)) return `${data.length}건`;
+  if (data.status && data.id && data.pgOrderId !== undefined) {
+    return `주문 #${data.id} ${data.status}${data.captureId ? ' 캡처 ' + data.captureId : ''}`;
+  }
+  return JSON.stringify(data).slice(0, 160);
+}
+
+function addLog(method, path, status, ms, summary) {
+  const li = document.createElement('li');
+  const now = new Date();
+  const t = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+  const cls = status >= 200 && status < 300 ? 'ok' : 'bad';
+  li.innerHTML = `<span class="t">${t}</span><span class="path">${esc(method)} ${esc(path)}</span>`
+    + `<span><span class="code ${cls}">${status || 'ERR'}</span> ${ms}ms</span>`
+    + (summary ? `<span class="sum">${esc(summary)}</span>` : '');
+  const log = $('#log');
+  log.prepend(li);
+  while (log.children.length > 150) log.lastChild.remove();
+}
+
+function notify(kind, html) {
+  const n = $('#notice');
+  n.className = `notice show ${kind}`;
+  n.innerHTML = html;
+}
+
+/* ---------- 설정, 상단 정보 ---------- */
+
+async function loadConfig() {
+  state.config = await api('GET', '/config', null, { log: false });
+  const pgs = state.config.availablePgs;
+  $('#pg-choice').innerHTML = pgs.map((p) => `<label><input type="radio" name="pg" value="${p}"`
+    + `${p === state.config.defaultPg ? ' checked' : ''}>${PG_NAME[p]}</label>`).join('');
+  $('#pg-choice').addEventListener('change', updatePgHint);
+  updatePgHint();
+  $('#e-count').value = state.config.poolSize;
+  // PG 지연이 커넥션 대기 제한보다 길어야 대기하던 조회가 실패하는 장면이 보인다.
+  $('#e-delay').value = state.config.connectionTimeoutMs + 2000;
+  $('#e-hint').textContent = `커넥션 풀 ${state.config.poolSize}개, 커넥션 대기 제한 ${state.config.connectionTimeoutMs}ms입니다. `
+    + 'PG 지연을 대기 제한보다 길게 잡아야 차이가 잘 보입니다. 트랜잭션 안 구조는 같은 상품 행 락도 함께 기다려서 결제가 한 건씩 줄을 섭니다.';
+  renderMeta();
+}
+
+function selectedPg() {
+  const el = document.querySelector('input[name=pg]:checked');
+  return el ? el.value : 'FAKE';
+}
+
+function updatePgHint() {
+  $('#pg-hint').textContent = selectedPg() === 'PAYPAL'
+    ? 'PayPal 주문은 승인 링크에서 샌드박스 Personal(구매자) 계정으로 승인해야 캡처할 수 있습니다. 판매자 계정 로그인이 남아 있으면 시크릿 창을 쓰세요.'
+    : '가짜 PG는 구매자 승인 단계를 건너뜁니다. 주문을 만들면 바로 캡처할 수 있습니다.';
+}
+
+function renderMeta() {
+  const c = state.config;
+  if (!c) return;
+  const paypal = c.availablePgs.includes('PAYPAL');
+  const f = state.faults;
+  const active = [];
+  if (f) {
+    if (f.pgDelayMs > 0) active.push(`PG 지연 ${f.pgDelayMs}ms`);
+    if (f.pgTimeoutAfterCapture) active.push('캡처 뒤 타임아웃');
+    if (f.dbFailureAfterCapture) active.push('캡처 뒤 DB 실패');
+    if (f.pgDecline) active.push('PG 거절');
+  }
+  $('#meta').innerHTML = [
+    `기본 PG <b>${PG_NAME[c.defaultPg]}</b>`,
+    `PayPal 샌드박스 <b>${paypal ? '연결됨' : '키 없음'}</b>`,
+    `커넥션 풀 <b>${c.poolSize}개</b>, 대기 제한 <b>${c.connectionTimeoutMs}ms</b>`,
+    active.length ? `<span class="fault-alert">장애 주입 중: ${esc(active.join(', '))}</span>` : '장애 주입 <b>없음</b>',
+  ].map((s) => `<span>${s}</span>`).join('');
+}
+
+/* ---------- 상품, 주문 ---------- */
+
+async function loadProducts() {
+  state.products = await api('GET', '/products', null, { log: false });
+  const sel = $('#product');
+  const current = sel.value;
+  sel.innerHTML = state.products.map((p) => `<option value="${p.id}">${esc(p.name)} ($${p.price}, 재고 ${p.stock})</option>`).join('');
+  if (current) sel.value = current;
+}
+
+async function loadOrders() {
+  state.orders = await api('GET', '/orders', null, { log: false });
+  renderOrders();
+}
+
+function linesText(o) {
+  const lines = o.lines || [];
+  if (!lines.length) return '';
+  const first = `${lines[0].productName} × ${lines[0].quantity}`;
+  return lines.length > 1 ? `${first} 외 ${lines.length - 1}건` : first;
+}
+
+function approveUrl(order) {
+  return `https://www.sandbox.paypal.com/checkoutnow?token=${encodeURIComponent(order.pgOrderId)}`;
+}
+
+function renderOrders() {
+  const table = $('#orders');
+  if (!state.orders.length) {
+    table.innerHTML = '<tr><td class="empty">주문이 없습니다.</td></tr>';
+    return;
+  }
+  const rows = state.orders.map((o) => {
+    const [label, cls] = STATUS[o.status] || [o.status, 'muted'];
+    const pg = state.pgStatus[o.id];
+    const pgCell = pg
+      ? (pg.error
+        ? `<span class="st bad">조회 실패</span><span class="sub">${esc(pg.error)}</span>`
+        : `<span class="st ${PG_STATUS[pg.status][1]}">${PG_STATUS[pg.status][0]}</span>`)
+      : '<span class="st muted">미조회</span>';
+    const mismatch = pg && !pg.error && pg.status === 'COMPLETED' && o.status !== 'PAID' && o.status !== 'REFUNDED';
+    const busy = state.busy.has(o.id);
+    const acts = [];
+    if (o.status === 'CREATED' && o.pgOrderId) {
+      if (o.pgProvider === 'PAYPAL' && (!pg || pg.status === 'CREATED')) {
+        acts.push(`<a href="${approveUrl(o)}" target="_blank" rel="noopener"><button class="small">승인 링크</button></a>`);
+      }
+      acts.push(`<button class="small" data-act="capture" data-strategy="in-tx" data-id="${o.id}" ${busy ? 'disabled' : ''}>트랜잭션 안 캡처</button>`);
+      acts.push(`<button class="small" data-act="capture" data-strategy="split" data-id="${o.id}" ${busy ? 'disabled' : ''}>분리 캡처</button>`);
+    }
+    if (['PAYMENT_IN_PROGRESS', 'PAYMENT_UNKNOWN', 'PAYMENT_FAILED'].includes(o.status) || mismatch) {
+      acts.push(`<button class="small" data-act="reconcile" data-id="${o.id}" ${busy ? 'disabled' : ''}>대사</button>`);
+    }
+    if (o.pgOrderId) {
+      acts.push(`<button class="small" data-act="pg" data-id="${o.id}">PG 조회</button>`);
+    }
+    const rowCls = mismatch ? 'mismatch' : (state.highlight === o.id ? 'highlight' : '');
+    return `<tr class="${rowCls}">
+      <td>#${o.id}<span class="sub">${esc(linesText(o))}</span>${o.requestedStrategy ? '<span class="sub">쇼핑 화면 주문</span>' : ''}</td>
+      <td>$${o.amount}</td>
+      <td>${PG_NAME[o.pgProvider] || '-'}<span class="sub mono">${esc(o.pgOrderId || '')}</span></td>
+      <td><span class="st ${cls}">${busy ? '처리 중' : label}</span>${o.failureReason ? `<span class="sub">${esc(o.failureReason)}</span>` : ''}</td>
+      <td>${STRATEGY[o.captureStrategy] || '-'}</td>
+      <td>${pgCell}${mismatch ? '<span class="sub" style="color:var(--bad)">PG만 결제 완료</span>' : ''}</td>
+      <td class="mono">${esc(o.captureId || (pg && pg.captureId) || '-')}</td>
+      <td><div class="actions" style="margin:0">${acts.join('')}</div></td>
+    </tr>`;
+  }).join('');
+  table.innerHTML = `<thead><tr><th>주문</th><th>금액</th><th>PG</th><th>주문 상태</th><th>구조</th><th>PG 상태</th><th>캡처 ID</th><th>동작</th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+async function refresh() {
+  try {
+    await Promise.all([loadProducts(), loadOrders()]);
+  } catch (e) {
+    // 커넥션 풀이 고갈되면 조회가 실패할 수 있다. 다음 주기에 다시 시도한다.
+  }
+}
+
+async function createOrder() {
+  const body = { productId: Number($('#product').value), quantity: Number($('#quantity').value), pg: selectedPg().toLowerCase() };
+  try {
+    const created = await api('POST', '/orders', body);
+    state.highlight = created.orderId;
+    if (selectedPg() === 'PAYPAL' && created.approveUrl) {
+      notify('info', `주문 #${created.orderId} 생성. PayPal 승인이 필요합니다. `
+        + `<a href="${esc(created.approveUrl)}" target="_blank" rel="noopener"><button class="small">승인 링크 열기</button></a>`
+        + ' 승인을 마치면 이 화면으로 돌아옵니다.');
+    } else {
+      notify('ok', `주문 #${created.orderId} 생성. 바로 캡처할 수 있습니다.`);
+    }
+  } catch (e) {
+    notify('bad', `주문 생성 실패: ${esc(e.message)}`);
+  }
+  await refresh();
+}
+
+async function capture(id, strategy) {
+  state.busy.add(id);
+  renderOrders();
+  const label = strategy === 'in-tx' ? '트랜잭션 안' : '분리';
+  try {
+    const order = await api('POST', `/orders/${id}/capture?strategy=${strategy}`);
+    notify('ok', `주문 #${id} ${label} 캡처 완료. 캡처 ID ${esc(order.captureId)}`);
+  } catch (e) {
+    notify('bad', `주문 #${id} ${label} 캡처 실패: ${esc(e.message)}. PG 상태를 조회해서 실제 결제 여부를 확인합니다.`);
+  } finally {
+    state.busy.delete(id);
+  }
+  await refresh();
+  await checkPg(id);
+}
+
+async function reconcile(id) {
+  state.busy.add(id);
+  renderOrders();
+  try {
+    const r = await api('POST', `/reconcile/${id}`);
+    const text = {
+      CONFIRMED_PAID: 'PG에서 결제 완료를 확인해 결제 완료로 확정했습니다.',
+      MARKED_FAILED: 'PG에 결제가 없어 실패 처리하고 재고를 돌려줬습니다.',
+      REFUNDED: '주문은 실패인데 PG에서 결제가 되어 있어 환불했습니다.',
+      ALREADY_PAID: '이미 결제 완료입니다.',
+      STILL_PENDING: 'PG 결제가 아직 없습니다. 대기 중으로 둡니다.',
+      NOTHING: '대사 대상이 아닙니다. 주문 생성 상태는 결제를 시도했는지 알 수 없어 대사가 손대지 않습니다.',
+    }[r.action] || r.action;
+    notify(r.action === 'NOTHING' ? 'bad' : 'ok', `주문 #${id} 대사: ${esc(text)}`);
+  } catch (e) {
+    notify('bad', `주문 #${id} 대사 실패: ${esc(e.message)}`);
+  } finally {
+    state.busy.delete(id);
+  }
+  await refresh();
+  await checkPg(id);
+}
+
+async function checkPg(id) {
+  try {
+    state.pgStatus[id] = await api('GET', `/orders/${id}/pg`);
+  } catch (e) {
+    state.pgStatus[id] = { error: e.message };
+  }
+  renderOrders();
+}
+
+async function checkAllPg() {
+  for (const o of state.orders.filter((x) => x.pgOrderId)) {
+    await checkPg(o.id);
+  }
+}
+
+async function reconcileAll() {
+  try {
+    const results = await api('POST', '/reconcile');
+    notify('info', results.length
+      ? `대사 ${results.length}건: ${esc(results.map((r) => `#${r.orderId} ${r.action}`).join(', '))}`
+      : `대사 대상 없음. 결제 중 상태로 ${state.config.reconcileStaleAfterSeconds}초가 지난 주문만 대상입니다. 바로 하려면 행의 대사 버튼을 쓰세요.`);
+  } catch (e) {
+    notify('bad', `대사 실패: ${esc(e.message)}`);
+  }
+  await refresh();
+}
+
+async function diagnose() {
+  const box = $('#mismatches');
+  box.className = 'empty';
+  box.textContent = '조회 중';
+  try {
+    const list = await api('GET', '/diagnostics/mismatches');
+    if (!list.length) {
+      box.textContent = '불일치 없음. PG에서 결제가 끝난 주문은 모두 결제 완료 상태입니다.';
+      return;
+    }
+    box.className = 'table-wrap';
+    box.innerHTML = `<table><thead><tr><th>주문</th><th>주문 상태</th><th>구조</th><th>PG 주문</th><th>PG 캡처 ID</th></tr></thead><tbody>${
+      list.map((m) => `<tr class="mismatch"><td>#${m.orderId}</td><td>${esc((STATUS[m.orderStatus] || [m.orderStatus])[0])}</td>`
+        + `<td>${esc(STRATEGY[m.strategy] || '기록 없음 (롤백됨)')}</td><td class="mono">${esc(m.pgOrderId)}</td><td class="mono">${esc(m.pgCaptureId)}</td></tr>`).join('')
+    }</tbody></table><p class="hint">PG에서는 돈이 빠져나갔는데 주문은 결제 완료가 아닙니다. 구조가 "기록 없음"이면 트랜잭션이 롤백되어 결제 시도 흔적까지 사라진 주문입니다.</p>`;
+  } catch (e) {
+    box.textContent = `진단 실패: ${e.message}`;
+  }
+}
+
+/* ---------- 장애 주입 ---------- */
+
+async function loadFaults() {
+  state.faults = await api('GET', '/faults', null, { log: false });
+  $('#f-delay').value = state.faults.pgDelayMs;
+  $('#f-timeout').checked = state.faults.pgTimeoutAfterCapture;
+  $('#f-db').checked = state.faults.dbFailureAfterCapture;
+  $('#f-decline').checked = state.faults.pgDecline;
+  renderMeta();
+}
+
+async function applyFaults() {
+  state.faults = await api('PUT', '/faults', {
+    pgDelayMs: Number($('#f-delay').value) || 0,
+    pgTimeoutAfterCapture: $('#f-timeout').checked,
+    dbFailureAfterCapture: $('#f-db').checked,
+    pgDecline: $('#f-decline').checked,
+  });
+  renderMeta();
+}
+
+async function resetFaults() {
+  await api('DELETE', '/faults');
+  await loadFaults();
+}
+
+/* ---------- 커넥션 풀, 동시 결제 실험 ---------- */
+
+let poolPeak = 0;
+
+function renderPool(p) {
+  $('#pool').innerHTML = Array.from({ length: p.max }, (_, i) => `<div class="slot ${i < p.active ? 'on' : ''}"></div>`).join('');
+  poolPeak = Math.max(poolPeak, p.active);
+  $('#pool-text').innerHTML = `사용 중 <b>${p.active}</b> / ${p.max}, 커넥션 대기 스레드 `
+    + `<b class="${p.waiting > 0 ? 'bad' : ''}">${p.waiting}</b>`;
+}
+
+async function pollPool() {
+  try {
+    renderPool(await api('GET', '/experiments/pool', null, { log: false }));
+  } catch { /* 무시 */ }
+}
+
+async function runExperiment() {
+  const body = {
+    productId: Number($('#product').value) || state.products[0].id,
+    strategy: $('#e-strategy').value,
+    count: Number($('#e-count').value),
+    pgDelayMs: Number($('#e-delay').value),
+  };
+  $('#e-run').disabled = true;
+  state.experimentRunning = true;
+  poolPeak = 0;
+  const probes = [];
+  $('#probes').innerHTML = '';
+  $('#probe-text').textContent = '';
+  $('#exp-result').innerHTML = '';
+
+  let run;
+  try {
+    run = await api('POST', '/experiments/concurrent-captures', body);
+  } catch (e) {
+    notify('bad', `실험 시작 실패: ${esc(e.message)}`);
+    $('#e-run').disabled = false;
+    state.experimentRunning = false;
+    return;
+  }
+
+  let inflight = 0;
+  let finishedAt = null;
+  const renderProbes = () => {
+    $('#probes').innerHTML = probes.slice(-120).map((p) => `<div class="probe ${p.state}" title="${p.state === 'wait' ? '응답 대기' : p.ms + 'ms'}"></div>`).join('');
+    const done = probes.filter((p) => p.state !== 'wait');
+    const fail = done.filter((p) => p.state === 'bad').length;
+    const max = done.reduce((m, p) => Math.max(m, p.ms), 0);
+    $('#probe-text').innerHTML = `상품 조회 <b>${done.length}</b>회, 실패 <b class="${fail ? 'bad' : ''}">${fail}</b>회, 가장 느린 응답 <b>${max}ms</b>`;
+  };
+
+  const probe = async () => {
+    // 결제가 모두 끝나고 1초가 지나면 새 조회를 띄우지 않는다.
+    if (inflight >= 2 || (finishedAt && performance.now() - finishedAt > 1000)) return;
+    inflight++;
+    const p = { state: 'wait', ms: 0 };
+    probes.push(p);
+    renderProbes();
+    const t0 = performance.now();
+    try {
+      const res = await fetch('/products');
+      p.state = res.ok ? 'ok' : 'bad';
+    } catch {
+      p.state = 'bad';
+    }
+    p.ms = Math.round(performance.now() - t0);
+    inflight--;
+    renderProbes();
+  };
+
+  const tick = setInterval(async () => {
+    pollPool();
+    probe();
+    try {
+      run = await api('GET', `/experiments/concurrent-captures/${run.id}`, null, { log: false });
+    } catch { /* 무시 */ }
+    renderRun(run);
+    const finished = Object.values(run.outcomes).every((o) => o.result !== 'RUNNING');
+    if (finished && !finishedAt) finishedAt = performance.now();
+    if (finishedAt && performance.now() - finishedAt > 1000 && inflight === 0) {
+      clearInterval(tick);
+      state.experimentRunning = false;
+      $('#e-run').disabled = false;
+      const fail = probes.filter((p) => p.state === 'bad').length;
+      addLog('EXP', `동시 결제 ${body.count}건 (${body.strategy}, PG ${body.pgDelayMs}ms)`, 200, 0,
+        `최대 커넥션 사용 ${poolPeak}/${state.config.poolSize}, 상품 조회 실패 ${fail}회`);
+      notify(fail ? 'bad' : 'ok', fail
+        ? `${body.strategy === 'in-tx' ? '트랜잭션 안' : '분리'} 구조: 결제가 PG를 기다리는 동안 커넥션을 쥐고 있어서 상품 조회가 ${fail}회 실패했습니다.`
+        : `${body.strategy === 'in-tx' ? '트랜잭션 안' : '분리'} 구조: 결제가 PG를 기다리는 동안에도 상품 조회가 모두 성공했습니다.`);
+      refresh();
+      loadFaults();
+    }
+  }, 300);
+}
+
+function renderRun(run) {
+  const rows = Object.entries(run.outcomes).sort((a, b) => a[0] - b[0]).map(([id, o]) => {
+    const cls = o.result === 'PAID' ? 'ok' : o.result === 'RUNNING' ? 'warn' : 'bad';
+    const label = o.result === 'RUNNING' ? '처리 중' : (STATUS[o.result] || [o.result])[0];
+    return `<tr><td>#${id}</td><td><span class="st ${cls}">${esc(label === 'ERROR' ? '오류' : label)}</span>`
+      + `${o.error ? `<span class="sub">${esc(o.error.slice(0, 140))}</span>` : ''}</td><td>${o.elapsedMs != null ? o.elapsedMs + 'ms' : ''}</td></tr>`;
+  }).join('');
+  $('#exp-result').innerHTML = `<table><thead><tr><th>주문</th><th>결과</th><th>걸린 시간</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- PayPal 승인 후 돌아왔을 때 ---------- */
+
+async function handleReturn() {
+  const params = new URLSearchParams(location.search);
+  const token = params.get('token');
+  if (params.get('cancelled')) {
+    notify('bad', `구매자가 PayPal 승인을 취소했습니다. PayPal 주문 ${esc(token || '')}`);
+  } else if (token) {
+    const order = state.orders.find((o) => o.pgOrderId === token);
+    if (order) {
+      state.highlight = order.id;
+      notify('ok', `주문 #${order.id} 구매자 승인 완료. 캡처할 구조를 고르세요. `
+        + `<button class="small" data-act="capture" data-strategy="in-tx" data-id="${order.id}">트랜잭션 안 캡처</button> `
+        + `<button class="small" data-act="capture" data-strategy="split" data-id="${order.id}">분리 캡처</button>`);
+      renderOrders();
+      checkPg(order.id);
+    } else {
+      notify('bad', `PayPal 주문 ${esc(token)}에 해당하는 주문이 없습니다. 서버를 재시작하면 메모리 DB가 비워집니다.`);
+    }
+  }
+  if (token || params.get('cancelled')) history.replaceState(null, '', '/');
+}
+
+/* ---------- 이벤트 연결 ---------- */
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  if (btn.dataset.act === 'capture') capture(id, btn.dataset.strategy);
+  if (btn.dataset.act === 'reconcile') reconcile(id);
+  if (btn.dataset.act === 'pg') checkPg(id);
+});
+$('#create').addEventListener('click', createOrder);
+$('#f-apply').addEventListener('click', applyFaults);
+$('#f-reset').addEventListener('click', resetFaults);
+$('#e-run').addEventListener('click', runExperiment);
+$('#check-all-pg').addEventListener('click', checkAllPg);
+$('#reconcile-all').addEventListener('click', reconcileAll);
+$('#diagnose').addEventListener('click', diagnose);
+$('#clear-log').addEventListener('click', () => { $('#log').innerHTML = ''; });
+
+(async function init() {
+  await loadConfig();
+  await Promise.all([refresh(), loadFaults(), pollPool()]);
+  await handleReturn();
+  setInterval(() => { if (!state.experimentRunning) refresh(); }, 2000);
+  setInterval(() => { if (!state.experimentRunning) pollPool(); }, 1000);
+})();
+</script>
+</body>
+</html>

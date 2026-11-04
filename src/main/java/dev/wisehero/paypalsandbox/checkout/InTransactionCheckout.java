@@ -4,8 +4,7 @@ import dev.wisehero.paypalsandbox.fault.FaultInjector;
 import dev.wisehero.paypalsandbox.order.PurchaseOrder;
 import dev.wisehero.paypalsandbox.order.PurchaseOrderRepository;
 import dev.wisehero.paypalsandbox.pg.PaymentGateway;
-import dev.wisehero.paypalsandbox.product.Product;
-import dev.wisehero.paypalsandbox.product.ProductRepository;
+import dev.wisehero.paypalsandbox.product.StockLedger;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,15 +23,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class InTransactionCheckout {
 
     private final PurchaseOrderRepository orders;
-    private final ProductRepository products;
+    private final StockLedger stock;
     private final PaymentGateway gateway;
     private final PaymentConfirmation confirmation;
     private final FaultInjector faults;
 
-    InTransactionCheckout(PurchaseOrderRepository orders, ProductRepository products, PaymentGateway gateway,
+    InTransactionCheckout(PurchaseOrderRepository orders, StockLedger stock, PaymentGateway gateway,
             PaymentConfirmation confirmation, FaultInjector faults) {
         this.orders = orders;
-        this.products = products;
+        this.stock = stock;
         this.gateway = gateway;
         this.confirmation = confirmation;
         this.faults = faults;
@@ -44,8 +43,7 @@ public class InTransactionCheckout {
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
         order.beginInTransactionCapture();
 
-        Product product = products.findByIdForUpdate(order.getProductId()).orElseThrow();
-        product.decreaseStock(order.getQuantity());
+        stock.reserve(order);
 
         // 커넥션과 락을 쥔 채로 외부 호출
         PaymentGateway.CaptureResult result = gateway.capture(order.getPgOrderId(), "capture-" + order.getId());

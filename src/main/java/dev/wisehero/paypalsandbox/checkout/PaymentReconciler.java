@@ -4,7 +4,7 @@ import dev.wisehero.paypalsandbox.order.OrderStatus;
 import dev.wisehero.paypalsandbox.order.PurchaseOrder;
 import dev.wisehero.paypalsandbox.order.PurchaseOrderRepository;
 import dev.wisehero.paypalsandbox.pg.PaymentGateway;
-import dev.wisehero.paypalsandbox.product.ProductRepository;
+import dev.wisehero.paypalsandbox.product.StockLedger;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -29,17 +29,17 @@ public class PaymentReconciler {
             List.of(OrderStatus.PAYMENT_IN_PROGRESS, OrderStatus.PAYMENT_UNKNOWN);
 
     private final PurchaseOrderRepository orders;
-    private final ProductRepository products;
+    private final StockLedger stock;
     private final PaymentGateway gateway;
     private final PaymentConfirmation confirmation;
     private final TransactionTemplate tx;
     private final Duration staleAfter;
 
-    PaymentReconciler(PurchaseOrderRepository orders, ProductRepository products, PaymentGateway gateway,
+    PaymentReconciler(PurchaseOrderRepository orders, StockLedger stock, PaymentGateway gateway,
             PaymentConfirmation confirmation, TransactionTemplate tx,
             @Value("${reconcile.stale-after}") Duration staleAfter) {
         this.orders = orders;
-        this.products = products;
+        this.stock = stock;
         this.gateway = gateway;
         this.confirmation = confirmation;
         this.tx = tx;
@@ -80,8 +80,7 @@ public class PaymentReconciler {
                     return new Result(orderId, Action.CONFIRMED_PAID, snapshot.captureId());
                 }
                 if (allowFail) {
-                    products.findByIdForUpdate(order.getProductId()).orElseThrow()
-                            .increaseStock(order.getQuantity());
+                    stock.release(order);
                     order.markFailed("대사: PG 캡처 없음 (" + snapshot.status() + ")");
                     return new Result(orderId, Action.MARKED_FAILED, null);
                 }

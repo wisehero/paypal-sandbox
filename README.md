@@ -37,6 +37,15 @@ PG가 거절하면 주문을 실패로 바꾸고 재고를 돌려줍니다. PG�
 - `CheckoutScenarioTest`: 장애별로 두 구조를 비교합니다. 멱등 캡처, 실패 주문의 환불(보상)도 확인합니다.
 - `ConnectionPoolExhaustionTest`: 커넥션 풀 2개, PG 지연 1.5초에서 결제 2건을 동시에 돌리고 그 사이에 상품 조회가 되는지 봅니다.
 
+## 화면
+
+`./gradlew bootRun` 후 http://localhost:8080 을 엽니다.
+
+- **쇼핑 화면** (`/`): 상품 목록 → 장바구니 → 주문서 → PG 승인 → 결제 완료 화면 순서로 진행합니다. 주문서의 "실험 설정"에서 결제 처리 구조(트랜잭션 안, 분리)를 고릅니다. 결제 완료 화면 아래 "실험 정보"에 우리 주문 상태와 PG 실제 상태를 나란히 보여 줍니다.
+- **실험 콘솔** (`/lab.html`): 장애 주입, 주문별 캡처와 대사, 불일치 진단, 동시 결제 실험(커넥션 풀 사용량과 상품 조회 성공 여부를 실시간으로 표시)을 다룹니다.
+
+결제 수단은 PayPal 샌드박스와 테스트 결제(가짜 PG) 중에서 고릅니다. 가짜 PG도 승인 화면(`/fake-pg.html`)을 거쳐서 PayPal과 같은 흐름을 탑니다. PayPal 키가 없으면 테스트 결제만 쓸 수 있습니다.
+
 ## 실행
 
 ### 가짜 PG로 실행 (기본값)
@@ -71,17 +80,20 @@ curl localhost:8080/diagnostics/mismatches
 ### PayPal 샌드박스로 실행
 
 1. [developer.paypal.com](https://developer.paypal.com)에 로그인해서 샌드박스 앱을 만들고 Client ID와 Secret을 받습니다. 사업자 계정이 없어도 됩니다.
-2. 환경변수로 넘겨서 실행합니다. 키는 저장소에 커밋하지 마세요.
+2. 프로젝트 루트에 `.env`를 만들고 키를 넣습니다. `.env`는 `.gitignore`에 들어 있습니다.
 
-```bash
-PG_PROVIDER=paypal \
-PAYPAL_CLIENT_ID=... \
-PAYPAL_CLIENT_SECRET=... \
-./gradlew bootRun
+```
+PG_PROVIDER=paypal
+PAYPAL_CLIENT_ID=...
+PAYPAL_CLIENT_SECRET=...
 ```
 
-3. 주문을 만들면 응답에 `approveUrl`이 옵니다. 브라우저로 열어서 샌드박스 구매자 계정(대시보드의 Sandbox accounts에 있습니다)으로 승인합니다.
-4. 승인하면 `/orders/return`으로 돌아오고, 화면에 캡처 명령이 나옵니다. 장애 주입은 PayPal 연동에서도 똑같이 쓸 수 있습니다.
+```bash
+set -a; . ./.env; set +a; ./gradlew bootRun
+```
+
+3. 쇼핑 화면에서 결제 수단을 PayPal로 고르고 결제하면 PayPal 샌드박스 승인 화면으로 넘어갑니다. **Personal(구매자) 테스트 계정**으로 로그인해서 승인합니다. 판매자(Business) 계정으로 로그인하면 자기 자신에게 결제하는 셈이라 PayPal이 막습니다. 판매자 로그인이 남아 있으면 시크릿 창을 쓰세요.
+4. 승인하면 `/checkout-return.html`로 돌아와서 고른 구조로 캡처하고 결제 완료 화면으로 넘어갑니다. 장애 주입은 PayPal 연동에서도 똑같이 쓸 수 있습니다.
 
 웹훅까지 받아 보려면 ngrok 같은 터널로 `/webhooks/paypal`을 외부에 열고, PayPal 대시보드에 웹훅을 등록한 뒤 `PAYPAL_WEBHOOK_ID`를 넘깁니다. `PAYMENT.CAPTURE.COMPLETED`가 오면 해당 주문을 대사합니다. 웹훅 내용을 그대로 믿지 않고 PayPal 주문을 다시 조회해서 판단합니다.
 
@@ -90,13 +102,17 @@ PAYPAL_CLIENT_SECRET=... \
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/products` | 상품 목록. 결제와 상관없는 조회 |
-| POST | `/orders` | 주문 생성 + PG 주문 생성 |
+| POST | `/checkout` | 장바구니 상품으로 주문 생성 + PG 주문 생성. 결제 처리 구조를 함께 받음 |
+| POST | `/checkout/complete` | PG 승인 후 호출. 고른 구조로 캡처 |
+| POST | `/orders` | 주문 생성 + PG 주문 생성 (실험 콘솔용) |
 | POST | `/orders/{id}/capture?strategy=in-tx\|split` | 캡처 |
 | GET | `/orders/{id}` | 주문 조회 |
 | POST | `/reconcile` | `reconcile.stale-after`(기본 30초)가 지난 결제 중 주문을 모두 대사 |
 | POST | `/reconcile/{id}` | 주문 하나를 바로 대사 |
 | GET | `/diagnostics/mismatches` | PG는 캡처됐는데 주문은 결제 완료가 아닌 건 |
 | GET, PUT, DELETE | `/faults` | 장애 주입 조회, 설정, 초기화 |
+| POST | `/experiments/concurrent-captures` | 같은 상품을 가짜 PG로 동시에 여러 건 캡처 |
+| GET | `/experiments/pool` | 커넥션 풀 사용량 |
 
 장애 주입 항목은 다음과 같습니다.
 

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>결제 처리 중</title>
+<link rel="stylesheet" href="/assets/shop.css">
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <div class="result-head" id="content">
+    <div class="spinner"></div>
+    <h1>결제를 처리하고 있습니다</h1>
+    <p class="lead">창을 닫거나 새로고침하지 마세요. <span id="elapsed"></span></p>
+  </div>
+</main>
+
+<script src="/assets/shop.js"></script>
+<script>
+// PG 승인 후 돌아오는 화면. 체크아웃에서 고른 구조로 캡처를 요청하고 결과 화면으로 넘긴다.
+const token = new URLSearchParams(location.search).get('token');
+const started = Date.now();
+const timer = setInterval(() => {
+  document.getElementById('elapsed').textContent = `${Math.floor((Date.now() - started) / 1000)}초 경과`;
+}, 500);
+
+function fail(message) {
+  clearInterval(timer);
+  document.getElementById('content').innerHTML = `
+    <div class="mark bad">!</div>
+    <h1>결제를 마무리하지 못했습니다</h1>
+    <p class="lead">${Shop.esc(message)}</p>
+    <a class="btn" href="/cart.html">장바구니로</a>`;
+}
+
+function doneKey() {
+  return `checkout-done-${token}`;
+}
+
+function remember(key, value) {
+  try { sessionStorage.setItem(key, value); } catch { /* 무시 */ }
+}
+
+function recall(key) {
+  try { return sessionStorage.getItem(key); } catch { return null; }
+}
+
+async function run() {
+  if (!token) return fail('PG 주문 정보가 없습니다.');
+
+  // 이미 처리한 결제면 다시 캡처하지 않고 결과 화면으로 보낸다.
+  const done = recall(doneKey());
+  if (done) return location.replace(`/order-complete.html?orderId=${done}`);
+
+  let order;
+  try {
+    order = await Shop.api('GET', `/checkout/pg-orders/${encodeURIComponent(token)}`);
+  } catch (e) {
+    return fail(`주문을 찾지 못했습니다. 서버를 다시 시작하면 메모리 DB가 비워집니다. (${e.message})`);
+  }
+  if (!order.requestedStrategy) {
+    // 실험 콘솔에서 만든 주문은 콘솔에서 캡처한다.
+    return location.replace(`/lab.html?token=${encodeURIComponent(token)}`);
+  }
+
+  try {
+    const result = await Shop.api('POST', '/checkout/complete', { token });
+    remember(doneKey(), String(result.orderId));
+    if (result.error) remember(`checkout-error-${result.orderId}`, result.error);
+    location.replace(`/order-complete.html?orderId=${result.orderId}`);
+  } catch (e) {
+    remember(doneKey(), String(order.id));
+    remember(`checkout-error-${order.id}`, e.message);
+    location.replace(`/order-complete.html?orderId=${order.id}`);
+  }
+}
+
+Shop.header('');
+run();
+</script>
+</body>
+</html>

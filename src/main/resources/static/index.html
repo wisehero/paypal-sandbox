@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sandbox Store</title>
+<link rel="stylesheet" href="/assets/shop.css">
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <h1>상품</h1>
+  <p class="lead">장바구니에 담고 체크아웃에서 결제합니다. 결제는 PayPal 샌드박스나 가짜 PG로 진행되며 실제 돈은 나가지 않습니다.</p>
+  <div class="grid" id="products"></div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script src="/assets/shop.js"></script>
+<script>
+let toastTimer;
+function toast(html) {
+  const t = document.getElementById('toast');
+  t.innerHTML = html;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+async function load() {
+  const products = await Shop.api('GET', '/products');
+  document.getElementById('products').innerHTML = products.map((p) => `
+    <div class="card">
+      <div class="thumb">${Shop.esc(p.name.charAt(0))}</div>
+      <div class="body">
+        <div class="name">${Shop.esc(p.name)}</div>
+        <div class="price">${Shop.money(p.price)}</div>
+        <div class="stock">재고 ${p.stock}개</div>
+        <div class="buy">
+          <input type="number" min="1" max="${p.stock}" value="1" id="qty-${p.id}" aria-label="수량">
+          <button data-id="${p.id}" ${p.stock < 1 ? 'disabled' : ''}>장바구니 담기</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+document.getElementById('products').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-id]');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const qty = Math.max(1, Number(document.getElementById(`qty-${id}`).value) || 1);
+  Shop.addToCart(id, qty);
+  toast(`장바구니에 담았습니다. <a href="/cart.html">장바구니 보기</a>`);
+});
+
+Shop.header('products');
+load();
+</script>
+</body>
+</html>

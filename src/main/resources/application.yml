@@ -2,7 +2,7 @@ spring:
   application:
     name: paypal-sandbox
   datasource:
-    url: jdbc:h2:mem:sandbox;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000
+    url: jdbc:h2:mem:sandbox;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=60000
     username: sa
     password:
     hikari:
@@ -19,16 +19,17 @@ spring:
       enabled: true
 
 pg:
+  # 주문을 만들 때 PG를 고르지 않으면 쓰는 기본값.
   # fake: 로컬 가짜 PG (구매자 승인 생략, 장애 주입 실험용)
-  # paypal: PayPal 샌드박스
+  # paypal: PayPal 샌드박스. 키를 넣으면 화면에서 주문마다 고를 수 있다.
   provider: ${PG_PROVIDER:fake}
   paypal:
     base-url: https://api-m.sandbox.paypal.com
     client-id: ${PAYPAL_CLIENT_ID:}
     client-secret: ${PAYPAL_CLIENT_SECRET:}
     webhook-id: ${PAYPAL_WEBHOOK_ID:}
-    return-url: ${PAYPAL_RETURN_URL:http://localhost:8080/orders/return}
-    cancel-url: ${PAYPAL_CANCEL_URL:http://localhost:8080/orders/cancel}
+    return-url: ${PAYPAL_RETURN_URL:http://localhost:8080/checkout-return.html}
+    cancel-url: ${PAYPAL_CANCEL_URL:http://localhost:8080/checkout.html?cancelled=1}
     connect-timeout: 3s
     read-timeout: 10s
 

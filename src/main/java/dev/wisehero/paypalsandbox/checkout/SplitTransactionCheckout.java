@@ -6,7 +6,7 @@ import dev.wisehero.paypalsandbox.order.PurchaseOrderRepository;
 import dev.wisehero.paypalsandbox.pg.PaymentGateway;
 import dev.wisehero.paypalsandbox.pg.PgDeclinedException;
 import dev.wisehero.paypalsandbox.pg.PgTimeoutException;
-import dev.wisehero.paypalsandbox.product.ProductRepository;
+import dev.wisehero.paypalsandbox.product.StockLedger;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -25,16 +25,16 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class SplitTransactionCheckout {
 
     private final PurchaseOrderRepository orders;
-    private final ProductRepository products;
+    private final StockLedger stock;
     private final PaymentGateway gateway;
     private final PaymentConfirmation confirmation;
     private final FaultInjector faults;
     private final TransactionTemplate tx;
 
-    SplitTransactionCheckout(PurchaseOrderRepository orders, ProductRepository products, PaymentGateway gateway,
+    SplitTransactionCheckout(PurchaseOrderRepository orders, StockLedger stock, PaymentGateway gateway,
             PaymentConfirmation confirmation, FaultInjector faults, TransactionTemplate tx) {
         this.orders = orders;
-        this.products = products;
+        this.stock = stock;
         this.gateway = gateway;
         this.confirmation = confirmation;
         this.faults = faults;
@@ -45,7 +45,7 @@ public class SplitTransactionCheckout {
         String pgOrderId = tx.execute(status -> {
             PurchaseOrder order = lock(orderId);
             order.startPayment();
-            products.findByIdForUpdate(order.getProductId()).orElseThrow().decreaseStock(order.getQuantity());
+            stock.reserve(order);
             return order.getPgOrderId();
         });
 
@@ -55,8 +55,8 @@ public class SplitTransactionCheckout {
         } catch (PgDeclinedException e) {
             tx.executeWithoutResult(status -> {
                 PurchaseOrder order = lock(orderId);
+                stock.release(order);
                 order.markFailed(e.getMessage());
-                products.findByIdForUpdate(order.getProductId()).orElseThrow().increaseStock(order.getQuantity());
             });
             throw e;
         } catch (PgTimeoutException e) {

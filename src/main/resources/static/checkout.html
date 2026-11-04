@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주문서</title>
+<link rel="stylesheet" href="/assets/shop.css">
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <h1>주문서</h1>
+  <div id="cancel-notice"></div>
+  <div id="content"></div>
+</main>
+
+<script src="/assets/shop.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+if (params.get('cancelled')) {
+  document.getElementById('cancel-notice').innerHTML =
+    '<div class="notice warn">결제를 취소했습니다. 장바구니는 그대로 남아 있습니다.</div>';
+  history.replaceState(null, '', '/checkout.html');
+}
+
+async function load() {
+  const [products, config] = await Promise.all([Shop.api('GET', '/products'), Shop.api('GET', '/config')]);
+  const items = Shop.cart()
+    .map((i) => ({ ...i, product: products.find((p) => p.id === i.productId) }))
+    .filter((i) => i.product);
+  const el = document.getElementById('content');
+  if (!items.length) {
+    el.innerHTML = `<p class="lead">주문할 상품이 없습니다.</p><a class="btn" href="/">상품 보러 가기</a>`;
+    return;
+  }
+  const total = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const paypal = config.availablePgs.includes('PAYPAL');
+
+  el.innerHTML = `
+  <div class="two-col">
+    <div>
+      <div class="box">
+        <h2>주문 상품</h2>
+        <table>
+          <tbody>${items.map((i) => `
+            <tr><td>${Shop.esc(i.product.name)} <span class="muted">× ${i.quantity}</span></td>
+            <td class="num">${Shop.money(i.product.price * i.quantity)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="box">
+        <h2>결제 수단</h2>
+        <label class="option">
+          <input type="radio" name="pg" value="paypal" ${paypal ? 'checked' : 'disabled'}>
+          <span><b>PayPal</b><small>${paypal
+            ? 'PayPal 샌드박스 화면에서 Personal(구매자) 테스트 계정으로 로그인해 승인합니다.'
+            : 'PayPal 키가 없어 쓸 수 없습니다. .env에 키를 넣고 다시 실행하세요.'}</small></span>
+        </label>
+        <label class="option">
+          <input type="radio" name="pg" value="fake" ${paypal ? '' : 'checked'}>
+          <span><b>테스트 결제</b><small>로컬 가짜 PG입니다. 승인 화면을 거치지만 외부로 나가는 요청은 없습니다.</small></span>
+        </label>
+      </div>
+
+      <div class="box lab">
+        <h2>실험 설정 <small>고객 화면에는 없는 영역</small></h2>
+        <label class="option">
+          <input type="radio" name="strategy" value="split" checked>
+          <span><b>트랜잭션 분리</b><small>결제 시작을 먼저 기록하고, PG 호출은 트랜잭션 밖에서 합니다. 실패해도 흔적이 남아 대사로 맞춥니다.</small></span>
+        </label>
+        <label class="option">
+          <input type="radio" name="strategy" value="in-tx">
+          <span><b>트랜잭션 안</b><small>재고 차감, PG 캡처, 결제 완료 처리를 한 트랜잭션에서 합니다. 실패하면 전부 롤백됩니다.</small></span>
+        </label>
+        <p class="muted" style="font-size:13px;margin:10px 0 0">장애 주입은 <a href="/lab.html">실험 콘솔</a>에서 켭니다. 켜져 있으면 화면 위에 빨간 줄로 표시됩니다.</p>
+      </div>
+    </div>
+
+    <div class="box summary">
+      <h2>결제 금액</h2>
+      <dl>
+        <dt>상품 금액</dt><dd>${Shop.money(total)}</dd>
+        <dt>배송비</dt><dd>무료</dd>
+        <div class="total" style="display:contents"><dt>총 결제 금액</dt><dd>${Shop.money(total)}</dd></div>
+      </dl>
+      <button class="primary btn-block" id="pay">${Shop.money(total)} 결제하기</button>
+      <div id="pay-error"></div>
+    </div>
+  </div>`;
+
+  document.getElementById('pay').addEventListener('click', () => pay(items));
+}
+
+async function pay(items) {
+  const btn = document.getElementById('pay');
+  const errorBox = document.getElementById('pay-error');
+  btn.disabled = true;
+  btn.textContent = '결제 준비 중';
+  errorBox.innerHTML = '';
+  try {
+    const created = await Shop.api('POST', '/checkout', {
+      items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      pg: document.querySelector('input[name=pg]:checked').value,
+      strategy: document.querySelector('input[name=strategy]:checked').value,
+    });
+    // PG 승인 화면으로 이동한다. 승인하면 /checkout-return.html로 돌아온다.
+    location.href = created.approveUrl;
+  } catch (e) {
+    errorBox.innerHTML = `<div class="notice bad">결제를 시작하지 못했습니다. ${Shop.esc(e.message)}</div>`;
+    btn.disabled = false;
+    btn.textContent = '다시 시도';
+  }
+}
+
+Shop.header('cart');
+load();
+</script>
+</body>
+</html>

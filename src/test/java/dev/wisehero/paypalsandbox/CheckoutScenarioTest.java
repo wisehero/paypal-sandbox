@@ -3,6 +3,7 @@ package dev.wisehero.paypalsandbox;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.wisehero.paypalsandbox.checkout.CheckoutService;
 import dev.wisehero.paypalsandbox.checkout.MismatchFinder;
 import dev.wisehero.paypalsandbox.checkout.OrderService;
 import dev.wisehero.paypalsandbox.checkout.PaymentReconciler;
@@ -16,10 +17,12 @@ import dev.wisehero.paypalsandbox.payment.OutboxEventRepository;
 import dev.wisehero.paypalsandbox.payment.PaymentRecordRepository;
 import dev.wisehero.paypalsandbox.pg.FakePaymentGateway;
 import dev.wisehero.paypalsandbox.pg.PgDeclinedException;
+import dev.wisehero.paypalsandbox.pg.PgProvider;
 import dev.wisehero.paypalsandbox.pg.PgTimeoutException;
 import dev.wisehero.paypalsandbox.product.Product;
 import dev.wisehero.paypalsandbox.product.ProductRepository;
 import java.math.BigDecimal;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -37,6 +40,8 @@ class CheckoutScenarioTest {
 
     @Autowired
     OrderService orderService;
+    @Autowired
+    CheckoutService checkoutService;
     @Autowired
     PaymentReconciler reconciler;
     @Autowired
@@ -211,6 +216,44 @@ class CheckoutScenarioTest {
                 .isEqualTo(PaymentReconciler.Action.REFUNDED);
         assertThat(orderService.get(orderId).getStatus()).isEqualTo(OrderStatus.REFUNDED);
         assertThat(fakePg.isRefunded(order.getPgOrderId())).isTrue();
+    }
+
+    @Test
+    @DisplayName("체크아웃: 상품 여러 개를 담아 PG 승인 후 완료하면 고른 구조로 캡처하고 상품마다 재고를 줄인다")
+    void checkoutWithMultipleItems() {
+        Product a = newProduct(10);
+        Product b = newProduct(5);
+        OrderService.CreatedOrder created = checkoutService.start(
+                List.of(new OrderService.Item(a.getId(), 2), new OrderService.Item(b.getId(), 1)),
+                PgProvider.FAKE, CaptureStrategy.SPLIT);
+
+        CheckoutService.CompleteResult result = checkoutService.complete(created.pgOrderId());
+
+        assertThat(result.status()).isEqualTo(OrderStatus.PAID);
+        assertThat(result.error()).isNull();
+        assertThat(orderService.get(created.orderId()).getAmount()).isEqualByComparingTo("30.00");
+        assertThat(stockOf(a)).isEqualTo(8);
+        assertThat(stockOf(b)).isEqualTo(4);
+
+        // 같은 화면을 다시 열어도 두 번 캡처하지 않는다.
+        assertThat(checkoutService.complete(created.pgOrderId()).status()).isEqualTo(OrderStatus.PAID);
+        assertThat(payments.findByOrderId(created.orderId())).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("체크아웃: 트랜잭션 안 구조에서 캡처 뒤 DB 실패가 나면 고객은 실패를 보고 재고는 그대로, PG는 결제 완료")
+    void checkoutInTransactionDbFailure() {
+        Product a = newProduct(10);
+        OrderService.CreatedOrder created = checkoutService.start(
+                List.of(new OrderService.Item(a.getId(), 1)), PgProvider.FAKE, CaptureStrategy.IN_TX);
+        faults.apply(FaultInjector.Settings.NONE.withDbFailureAfterCapture());
+
+        CheckoutService.CompleteResult result = checkoutService.complete(created.pgOrderId());
+
+        assertThat(result.status()).isEqualTo(OrderStatus.CREATED);
+        assertThat(result.error()).contains("DB 반영 실패");
+        assertThat(stockOf(a)).isEqualTo(10);
+        assertThat(fakePg.getOrder(created.pgOrderId()).isCaptured()).isTrue();
     }
 
     private void markFailedDirectly(Long orderId) {

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>장바구니</title>
+<link rel="stylesheet" href="/assets/shop.css">
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <h1>장바구니</h1>
+  <div id="content"></div>
+</main>
+
+<script src="/assets/shop.js"></script>
+<script>
+let products = [];
+
+function render() {
+  const items = Shop.cart()
+    .map((i) => ({ ...i, product: products.find((p) => p.id === i.productId) }))
+    .filter((i) => i.product);
+  const el = document.getElementById('content');
+  if (!items.length) {
+    el.innerHTML = `<p class="lead">장바구니가 비어 있습니다.</p><a class="btn" href="/">상품 보러 가기</a>`;
+    return;
+  }
+  const total = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  el.innerHTML = `
+  <div class="two-col">
+    <div class="box">
+      <div class="table-wrap"><table>
+        <thead><tr><th>상품</th><th class="num">단가</th><th>수량</th><th class="num">금액</th><th></th></tr></thead>
+        <tbody>${items.map((i) => `
+          <tr>
+            <td>${Shop.esc(i.product.name)}${i.quantity > i.product.stock ? `<div class="st-bad" style="font-size:13px">재고 부족 (남은 재고 ${i.product.stock}개)</div>` : ''}</td>
+            <td class="num">${Shop.money(i.product.price)}</td>
+            <td><input type="number" min="1" max="${i.product.stock}" value="${i.quantity}" data-qty="${i.productId}" aria-label="수량"></td>
+            <td class="num">${Shop.money(i.product.price * i.quantity)}</td>
+            <td class="num"><button class="btn-small" data-remove="${i.productId}">삭제</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="box summary">
+      <h2>결제 예정 금액</h2>
+      <dl>
+        <dt>상품 금액</dt><dd>${Shop.money(total)}</dd>
+        <dt>배송비</dt><dd>무료</dd>
+        <div class="total" style="display:contents"><dt>합계</dt><dd>${Shop.money(total)}</dd></div>
+      </dl>
+      <a class="btn btn-primary btn-block" href="/checkout.html">주문하기</a>
+    </div>
+  </div>`;
+}
+
+document.getElementById('content').addEventListener('change', (e) => {
+  const id = e.target.dataset.qty;
+  if (!id) return;
+  Shop.setQuantity(Number(id), Math.max(1, Number(e.target.value) || 1));
+  render();
+});
+document.getElementById('content').addEventListener('click', (e) => {
+  const id = e.target.dataset.remove;
+  if (!id) return;
+  Shop.removeFromCart(Number(id));
+  render();
+});
+
+Shop.header('cart');
+Shop.api('GET', '/products').then((list) => { products = list; render(); });
+</script>
+</body>
+</html>

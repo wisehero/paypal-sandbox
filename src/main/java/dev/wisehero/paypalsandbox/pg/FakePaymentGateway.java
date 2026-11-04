@@ -25,7 +25,8 @@ public class FakePaymentGateway implements PaymentGateway {
     public PgOrder createOrder(String merchantOrderId, BigDecimal amount, String currency) {
         String pgOrderId = "FAKE-" + UUID.randomUUID();
         orders.put(pgOrderId, new FakeOrder(amount, currency));
-        return new PgOrder(pgOrderId, null);
+        // PayPal과 같은 흐름을 타도록 가짜 승인 화면 주소를 돌려준다. 캡처에 승인이 필수는 아니다.
+        return new PgOrder(pgOrderId, "/fake-pg.html?token=" + pgOrderId);
     }
 
     @Override

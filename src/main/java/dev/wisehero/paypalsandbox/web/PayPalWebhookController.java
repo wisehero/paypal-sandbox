@@ -5,7 +5,7 @@ import dev.wisehero.paypalsandbox.pg.PayPalPaymentGateway;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 웹훅 내용을 그대로 믿지 않고 PG 주문을 다시 조회해서 판단한다.
  */
 @RestController
-@ConditionalOnProperty(name = "pg.provider", havingValue = "paypal")
+@ConditionalOnExpression("!'${pg.paypal.client-id:}'.isEmpty()")
 class PayPalWebhookController {
 
     private static final Logger log = LoggerFactory.getLogger(PayPalWebhookController.class);

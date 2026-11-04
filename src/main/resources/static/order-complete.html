@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주문 결과</title>
+<link rel="stylesheet" href="/assets/shop.css">
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap" style="max-width:720px">
+  <div id="head" class="result-head"><div class="spinner"></div></div>
+  <div id="detail"></div>
+  <div id="lab"></div>
+  <div class="actions" id="actions"></div>
+</main>
+
+<script src="/assets/shop.js"></script>
+<script>
+const orderId = Number(new URLSearchParams(location.search).get('orderId'));
+const STRATEGY = { IN_TX: '트랜잭션 안', SPLIT: '트랜잭션 분리' };
+const PG_NAME = { FAKE: '테스트 결제 (가짜 PG)', PAYPAL: 'PayPal' };
+const ORDER_STATUS = {
+  CREATED: ['주문 생성 (결제 기록 없음)', 'st-bad'],
+  PAYMENT_IN_PROGRESS: ['결제 중', 'st-warn'],
+  PAYMENT_UNKNOWN: ['결제 결과 모름', 'st-warn'],
+  PAID: ['결제 완료', 'st-ok'],
+  PAYMENT_FAILED: ['결제 실패', 'st-bad'],
+  REFUNDED: ['환불', 'muted'],
+};
+const PG_STATUS = {
+  CREATED: ['승인 대기', 'muted'],
+  APPROVED: ['승인 완료, 결제 전', 'st-warn'],
+  COMPLETED: ['결제 완료', 'st-ok'],
+  VOIDED: ['취소', 'muted'],
+  UNKNOWN: ['알 수 없음', 'muted'],
+};
+
+let pollTimer = null;
+
+function recall(key) {
+  try { return sessionStorage.getItem(key); } catch { return null; }
+}
+
+function fmtTime(iso) {
+  return iso ? new Date(iso).toLocaleString('ko-KR') : '-';
+}
+
+/* ---------- 고객이 보는 영역 ---------- */
+
+function renderCustomer(order) {
+  const head = document.getElementById('head');
+  const actions = document.getElementById('actions');
+  const error = recall(`checkout-error-${order.id}`);
+  let mark, title, lead;
+
+  switch (order.status) {
+    case 'PAID':
+      mark = ['ok', '✓'];
+      title = '결제가 완료되었습니다';
+      lead = `주문번호 #${order.id}`;
+      Shop.clearCart();
+      actions.innerHTML = '<a class="btn btn-primary" href="/">쇼핑 계속하기</a>';
+      break;
+    case 'PAYMENT_IN_PROGRESS':
+    case 'PAYMENT_UNKNOWN':
+      mark = ['warn', '…'];
+      title = '결제 결과를 확인하고 있습니다';
+      lead = '결제가 확인되면 이 화면이 자동으로 바뀝니다. 같은 주문으로 다시 결제하지 마세요.';
+      actions.innerHTML = '<a class="btn" href="/">쇼핑 계속하기</a>';
+      break;
+    case 'REFUNDED':
+      mark = ['bad', '!'];
+      title = '결제가 취소되었습니다';
+      lead = '주문을 처리하지 못해 결제 금액을 환불했습니다.';
+      actions.innerHTML = '<a class="btn btn-primary" href="/checkout.html">다시 결제하기</a>';
+      break;
+    default: // CREATED, PAYMENT_FAILED
+      mark = ['bad', '!'];
+      title = '결제에 실패했습니다';
+      lead = order.failureReason || error || '결제를 완료하지 못했습니다.';
+      actions.innerHTML = '<a class="btn btn-primary" href="/checkout.html">다시 결제하기</a> <a class="btn" href="/cart.html">장바구니</a>';
+  }
+
+  head.innerHTML = `<div class="mark ${mark[0]}">${mark[1]}</div><h1>${Shop.esc(title)}</h1><p class="lead">${Shop.esc(lead)}</p>`;
+
+  document.getElementById('detail').innerHTML = `
+    <div class="box">
+      <h2>주문 상품</h2>
+      <table><tbody>${order.lines.map((l) => `
+        <tr><td>${Shop.esc(l.productName)} <span class="muted">× ${l.quantity}</span></td>
+        <td class="num">${Shop.money(l.amount)}</td></tr>`).join('')}
+        <tr><td><b>총 결제 금액</b></td><td class="num"><b>${Shop.money(order.amount)}</b></td></tr>
+      </tbody></table>
+    </div>
+    ${order.status === 'PAID' ? `
+    <div class="box">
+      <h2>결제 정보</h2>
+      <dl class="kv">
+        <dt>결제 수단</dt><dd>${Shop.esc(PG_NAME[order.pgProvider] || '-')}</dd>
+        <dt>결제 일시</dt><dd>${fmtTime(order.updatedAt)}</dd>
+        <dt>승인번호</dt><dd class="mono">${Shop.esc(order.captureId)}</dd>
+      </dl>
+    </div>` : ''}`;
+}
+
+/* ---------- 실험 정보: 우리 주문 상태와 PG 실제 상태 비교 ---------- */
+
+function renderLab(order, pg, pgError) {
+  const error = recall(`checkout-error-${order.id}`);
+  const [statusLabel, statusCls] = ORDER_STATUS[order.status] || [order.status, ''];
+  const pgCell = pgError
+    ? `<span class="st-bad">조회 실패</span> <span class="muted">${Shop.esc(pgError)}</span>`
+    : pg ? `<span class="${PG_STATUS[pg.status][1]}">${PG_STATUS[pg.status][0]}</span>` : '<span class="muted">조회 중</span>';
+
+  let verdict = '';
+  const pgPaid = pg && pg.status === 'COMPLETED';
+  if (pgPaid && order.status === 'CREATED') {
+    verdict = `<div class="notice bad"><b>돈은 빠져나갔는데 주문에는 흔적이 없습니다.</b><br>
+      트랜잭션 안 구조라서 PG 캡처 뒤 실패가 전체 롤백됐습니다. 주문은 결제를 시도한 적 없는 상태(CREATED)로 돌아가서
+      대사 대상에도 잡히지 않습니다. 고객은 실패 화면을 보고 다시 결제할 수 있습니다.</div>`;
+  } else if (pgPaid && (order.status === 'PAYMENT_IN_PROGRESS' || order.status === 'PAYMENT_UNKNOWN')) {
+    verdict = `<div class="notice warn"><b>PG는 결제 완료, 주문은 확인 대기입니다.</b><br>
+      트랜잭션 분리 구조라서 결제 시작 기록이 남아 있습니다. 대사를 실행하면 PG를 조회해서 결제 완료로 확정합니다.</div>`;
+  } else if (pgPaid && order.status === 'PAYMENT_FAILED') {
+    verdict = `<div class="notice bad"><b>주문은 실패인데 PG에서 결제가 됐습니다.</b> 대사를 실행하면 환불합니다.</div>`;
+  } else if (pg && !pgPaid && (order.status === 'PAYMENT_IN_PROGRESS' || order.status === 'PAYMENT_UNKNOWN')) {
+    verdict = `<div class="notice info">PG에 결제가 없습니다. 대사를 실행하면 실패 처리하고 재고를 돌려줍니다.</div>`;
+  } else if (pgPaid && order.status === 'PAID') {
+    verdict = `<div class="notice ok">주문 상태와 PG 상태가 일치합니다.</div>`;
+  }
+
+  const canReconcile = ['PAYMENT_IN_PROGRESS', 'PAYMENT_UNKNOWN', 'PAYMENT_FAILED'].includes(order.status);
+  document.getElementById('lab').innerHTML = `
+    <div class="box lab">
+      <h2>실험 정보 <small>고객 화면에는 없는 영역</small></h2>
+      <dl class="kv">
+        <dt>선택한 구조</dt><dd>${Shop.esc(STRATEGY[order.requestedStrategy] || '-')}</dd>
+        <dt>캡처 시도 기록</dt><dd>${order.captureStrategy ? Shop.esc(STRATEGY[order.captureStrategy]) : '<span class="st-bad">없음</span> <span class="muted">(롤백되었거나 시도 전)</span>'}</dd>
+        <dt>주문 상태</dt><dd><span class="${statusCls}">${Shop.esc(statusLabel)}</span> <span class="mono muted">${order.status}</span></dd>
+        <dt>PG 상태</dt><dd>${pgCell}</dd>
+        <dt>PG 주문</dt><dd class="mono">${Shop.esc(order.pgOrderId || '-')}</dd>
+        <dt>PG 캡처 ID</dt><dd class="mono">${Shop.esc((pg && pg.captureId) || '-')}</dd>
+        ${error ? `<dt>캡처 요청 오류</dt><dd class="st-bad">${Shop.esc(error)}</dd>` : ''}
+      </dl>
+      ${verdict}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="btn-small" id="re-pg">PG 다시 조회</button>
+        ${canReconcile ? '<button class="btn-small" id="reconcile">지금 대사 실행</button>' : ''}
+        <a class="btn btn-small" href="/lab.html">실험 콘솔</a>
+      </div>
+      <div id="lab-msg"></div>
+    </div>`;
+
+  document.getElementById('re-pg').addEventListener('click', load);
+  const rec = document.getElementById('reconcile');
+  if (rec) {
+    rec.addEventListener('click', async () => {
+      rec.disabled = true;
+      try {
+        const r = await Shop.api('POST', `/reconcile/${order.id}`);
+        document.getElementById('lab-msg').innerHTML = `<div class="notice info">대사 결과: ${Shop.esc(r.action)}</div>`;
+      } catch (e) {
+        document.getElementById('lab-msg').innerHTML = `<div class="notice bad">대사 실패: ${Shop.esc(e.message)}</div>`;
+      }
+      setTimeout(load, 600);
+    });
+  }
+}
+
+async function load() {
+  let order;
+  try {
+    order = await Shop.api('GET', `/orders/${orderId}`);
+  } catch (e) {
+    document.getElementById('head').innerHTML = `<div class="mark bad">!</div><h1>주문을 찾을 수 없습니다</h1><p class="lead">${Shop.esc(e.message)}</p>`;
+    return;
+  }
+  renderCustomer(order);
+  renderLab(order, null, null);
+
+  let pg = null;
+  let pgError = null;
+  if (order.pgOrderId) {
+    try { pg = await Shop.api('GET', `/orders/${orderId}/pg`); } catch (e) { pgError = e.message; }
+  }
+  renderLab(order, pg, pgError);
+
+  // 확인 대기 상태면 대사나 웹훅으로 바뀌는지 지켜본다.
+  clearTimeout(pollTimer);
+  if (order.status === 'PAYMENT_IN_PROGRESS' || order.status === 'PAYMENT_UNKNOWN') {
+    pollTimer = setTimeout(load, 3000);
+  }
+}
+
+Shop.header('');
+load();
+</script>
+</body>
+</html>

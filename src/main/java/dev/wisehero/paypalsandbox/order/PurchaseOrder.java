@@ -1,18 +1,28 @@
 package dev.wisehero.paypalsandbox.order;
 
+import dev.wisehero.paypalsandbox.pg.PgProvider;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 
 @Entity
 @Table(name = "purchase_order")
@@ -25,9 +35,12 @@ public class PurchaseOrder {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private Long productId;
-
-    private int quantity;
+    // 행 잠금 쿼리에 조인이 섞이지 않도록 별도 쿼리로 읽는다.
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SELECT)
+    @CollectionTable(name = "purchase_order_line", joinColumns = @JoinColumn(name = "order_id"))
+    @OrderColumn(name = "line_no")
+    private List<OrderLine> lines = new ArrayList<>();
 
     private BigDecimal amount;
 
@@ -36,10 +49,18 @@ public class PurchaseOrder {
     @Enumerated(EnumType.STRING)
     private OrderStatus status;
 
+    /** 체크아웃에서 고른 결제 처리 구조. 실험 콘솔에서 만든 주문은 비어 있고 캡처할 때 고른다. */
+    @Enumerated(EnumType.STRING)
+    private CaptureStrategy requestedStrategy;
+
+    /** 실제로 캡처를 시도한 구조. 트랜잭션 안 구조가 롤백되면 이 값도 함께 사라진다. */
     @Enumerated(EnumType.STRING)
     private CaptureStrategy captureStrategy;
 
     private String pgOrderId;
+
+    @Enumerated(EnumType.STRING)
+    private PgProvider pgProvider;
 
     private String captureId;
 
@@ -52,11 +73,14 @@ public class PurchaseOrder {
     protected PurchaseOrder() {
     }
 
-    public PurchaseOrder(Long productId, int quantity, BigDecimal amount, String currency) {
-        this.productId = productId;
-        this.quantity = quantity;
-        this.amount = amount;
+    public PurchaseOrder(List<OrderLine> lines, String currency, CaptureStrategy requestedStrategy) {
+        if (lines.isEmpty()) {
+            throw new IllegalArgumentException("주문 상품이 없다");
+        }
+        this.lines = new ArrayList<>(lines);
+        this.amount = lines.stream().map(OrderLine::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         this.currency = currency;
+        this.requestedStrategy = requestedStrategy;
         this.status = OrderStatus.CREATED;
     }
 
@@ -71,7 +95,8 @@ public class PurchaseOrder {
         updatedAt = Instant.now();
     }
 
-    public void attachPgOrder(String pgOrderId) {
+    public void attachPgOrder(PgProvider provider, String pgOrderId) {
+        this.pgProvider = provider;
         this.pgOrderId = pgOrderId;
     }
 
@@ -137,12 +162,8 @@ public class PurchaseOrder {
         return id;
     }
 
-    public Long getProductId() {
-        return productId;
-    }
-
-    public int getQuantity() {
-        return quantity;
+    public List<OrderLine> getLines() {
+        return List.copyOf(lines);
     }
 
     public BigDecimal getAmount() {
@@ -157,8 +178,16 @@ public class PurchaseOrder {
         return status;
     }
 
+    public CaptureStrategy getRequestedStrategy() {
+        return requestedStrategy;
+    }
+
     public CaptureStrategy getCaptureStrategy() {
         return captureStrategy;
+    }
+
+    public PgProvider getPgProvider() {
+        return pgProvider;
     }
 
     public String getPgOrderId() {
