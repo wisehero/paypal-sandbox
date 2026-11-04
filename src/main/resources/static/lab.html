@@ -161,11 +161,22 @@
       <label class="check"><input type="checkbox" id="f-timeout">PG 캡처 뒤 응답 타임아웃</label>
       <label class="check"><input type="checkbox" id="f-db">PG 캡처 뒤 DB 반영 실패</label>
       <label class="check"><input type="checkbox" id="f-decline">PG 결제 거절</label>
+      <label class="field" style="margin-top:10px"><span>PayPal 모의 응답 (캡처)</span>
+        <select id="f-mock">
+          <option value="">끄기</option>
+          <option value="INSTRUMENT_DECLINED">INSTRUMENT_DECLINED (결제 수단 거절, 422)</option>
+          <option value="TRANSACTION_REFUSED">TRANSACTION_REFUSED (거래 거부, 422)</option>
+          <option value="PAYER_ACTION_REQUIRED">PAYER_ACTION_REQUIRED (구매자 추가 조치 필요, 422)</option>
+          <option value="MAX_NUMBER_OF_PAYMENT_ATTEMPTS_EXCEEDED">MAX_NUMBER_OF_PAYMENT_ATTEMPTS_EXCEEDED (시도 횟수 초과, 422)</option>
+          <option value="PAYEE_ACCOUNT_RESTRICTED">PAYEE_ACCOUNT_RESTRICTED (판매자 계정 제한, 403 본문 없음)</option>
+          <option value="INTERNAL_SERVER_ERROR">INTERNAL_SERVER_ERROR (PayPal 서버 오류, 500)</option>
+        </select>
+      </label>
       <div class="actions">
         <button id="f-apply">적용</button>
         <button id="f-reset">모두 끄기</button>
       </div>
-      <p class="hint">켜 두면 끌 때까지 모든 캡처에 적용됩니다. PayPal 주문에도 똑같이 적용됩니다.</p>
+      <p class="hint">켜 두면 끌 때까지 모든 캡처에 적용됩니다. 위의 네 항목은 우리 코드가 장애를 흉내 내고, PayPal 모의 응답은 PayPal 샌드박스가 실제 오류 응답을 보냅니다. 모의 응답은 PayPal 캡처에만 걸리며 이때 PayPal은 결제를 처리하지 않습니다.</p>
     </section>
 
   </aside>
@@ -316,6 +327,7 @@ function renderMeta() {
     if (f.pgTimeoutAfterCapture) active.push('캡처 뒤 타임아웃');
     if (f.dbFailureAfterCapture) active.push('캡처 뒤 DB 실패');
     if (f.pgDecline) active.push('PG 거절');
+    if (f.paypalMockResponse) active.push(`PayPal 모의 응답 ${f.paypalMockResponse}`);
   }
   $('#meta').innerHTML = [
     `기본 PG <b>${PG_NAME[c.defaultPg]}</b>`,
@@ -517,6 +529,7 @@ async function loadFaults() {
   $('#f-timeout').checked = state.faults.pgTimeoutAfterCapture;
   $('#f-db').checked = state.faults.dbFailureAfterCapture;
   $('#f-decline').checked = state.faults.pgDecline;
+  $('#f-mock').value = state.faults.paypalMockResponse || '';
   renderMeta();
 }
 
@@ -526,6 +539,7 @@ async function applyFaults() {
     pgTimeoutAfterCapture: $('#f-timeout').checked,
     dbFailureAfterCapture: $('#f-db').checked,
     pgDecline: $('#f-decline').checked,
+    paypalMockResponse: $('#f-mock').value || null,
   });
   renderMeta();
 }

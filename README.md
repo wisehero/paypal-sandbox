@@ -118,6 +118,7 @@ set -a; . ./.env; set +a; ./gradlew bootRun
 - `pgTimeoutAfterCapture`: PG는 캡처했는데 응답을 못 받은 것처럼 예외
 - `dbFailureAfterCapture`: 캡처 뒤 DB 반영 단계에서 예외를 던져 롤백
 - `pgDecline`: PG가 결제를 거절
+- `paypalMockResponse`: PayPal 캡처 요청에 `PayPal-Mock-Response` 헤더로 이 오류 코드를 붙입니다(예: `INSTRUMENT_DECLINED`, `INTERNAL_SERVER_ERROR`). 위 네 가지는 우리 코드가 장애를 흉내 내지만, 이 항목은 PayPal 샌드박스가 실제 오류 응답을 보냅니다. PayPal은 결제를 처리하지 않습니다. 비우거나 빼면 꺼집니다.
 
 ## 설정에서 눈여겨볼 것
 

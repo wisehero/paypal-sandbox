@@ -98,11 +98,18 @@ public class PayPalPaymentGateway implements PgClient {
             throw new PgDeclinedException("주입한 장애: PG 결제 거절");
         }
 
+        String mockCode = faults.paypalMockResponse();
         Map<String, Object> response;
         try {
             response = call(() -> client.post()
                     .uri("/v2/checkout/orders/{id}/capture", pgOrderId)
-                    .headers(h -> h.setBearerAuth(token()))
+                    .headers(h -> {
+                        h.setBearerAuth(token());
+                        if (mockCode != null) {
+                            // 샌드박스 전용. PayPal이 결제를 처리하지 않고 이 오류 응답을 돌려준다.
+                            h.set("PayPal-Mock-Response", "{\"mock_application_codes\":\"" + mockCode + "\"}");
+                        }
+                    })
                     // PayPal 주문 ID를 붙여 다른 주문과 키가 겹치지 않게 한다. 같은 주문의 재시도에는 같은 키가 간다.
                     .header("PayPal-Request-Id", idempotencyKey + "-" + pgOrderId)
                     .contentType(MediaType.APPLICATION_JSON)

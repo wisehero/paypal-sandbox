@@ -89,6 +89,7 @@ const Shop = (() => {
       if (f.pgTimeoutAfterCapture) active.push('캡처 뒤 응답 타임아웃');
       if (f.dbFailureAfterCapture) active.push('캡처 뒤 DB 반영 실패');
       if (f.pgDecline) active.push('PG 결제 거절');
+      if (f.paypalMockResponse) active.push(`PayPal 모의 응답 ${f.paypalMockResponse}`);
       if (active.length) {
         const bar = document.createElement('div');
         bar.className = 'fault-bar';
