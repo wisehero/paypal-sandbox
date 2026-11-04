@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: paypal-sandbox
+  datasource:
+    url: jdbc:h2:mem:sandbox;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000
+    username: sa
+    password:
+    hikari:
+      # 커넥션 풀 고갈 실험을 위해 일부러 작게 잡는다.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:3000}
+  jpa:
+    # OSIV를 켜 두면 요청이 끝날 때까지 커넥션을 쥐고 있어서 트랜잭션 분리 효과가 사라진다.
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+  h2:
+    console:
+      enabled: true
+
+pg:
+  # fake: 로컬 가짜 PG (구매자 승인 생략, 장애 주입 실험용)
+  # paypal: PayPal 샌드박스
+  provider: ${PG_PROVIDER:fake}
+  paypal:
+    base-url: https://api-m.sandbox.paypal.com
+    client-id: ${PAYPAL_CLIENT_ID:}
+    client-secret: ${PAYPAL_CLIENT_SECRET:}
+    webhook-id: ${PAYPAL_WEBHOOK_ID:}
+    return-url: ${PAYPAL_RETURN_URL:http://localhost:8080/orders/return}
+    cancel-url: ${PAYPAL_CANCEL_URL:http://localhost:8080/orders/cancel}
+    connect-timeout: 3s
+    read-timeout: 10s
+
+reconcile:
+  # 결제 중이거나 결과를 모르는 주문을 이 시간이 지난 뒤에 대사한다.
+  stale-after: 30s
+  schedule-enabled: ${RECONCILE_SCHEDULE_ENABLED:false}
+  fixed-delay: 60s
