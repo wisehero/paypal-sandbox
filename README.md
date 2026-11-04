@@ -136,30 +136,9 @@ set -a; . ./.env; set +a; ./gradlew bootRun
 
 `status_url`은 엑심베이 서버가 직접 부르는 주소라 localhost로는 받을 수 없습니다. 받아 보려면 터널 주소를 `EXIMBAY_STATUS_URL`로 넘깁니다.
 
-## API
+## 장애 주입
 
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| GET | `/products` | 상품 목록. 결제와 상관없는 조회 |
-| POST | `/checkout` | 장바구니 상품으로 주문 생성 + PG 주문 생성. 결제 처리 구조를 함께 받음 |
-| GET | `/checkout/pg-orders/{pgOrderId}` | PG 주문 ID로 우리 주문 조회 |
-| POST | `/checkout/complete` | PG 승인 후 호출. 고른 구조로 캡처 |
-| GET | `/config` | 쓸 수 있는 PG, 기본 PG, 커넥션 풀 설정 |
-| POST | `/orders` | 주문 생성 + PG 주문 생성 (실험 콘솔용). `pg`에 `eximbay` 또는 `paypal` |
-| POST | `/orders/{id}/capture?strategy=in-tx\|split` | 캡처 |
-| GET | `/orders` | 주문 목록 |
-| GET | `/orders/{id}` | 주문 조회 |
-| GET | `/orders/{id}/pg` | PG 쪽 실제 주문 상태 |
-| GET | `/orders/return`, `/orders/cancel` | 쇼핑 화면 없이 API로 PayPal 승인을 받을 때 돌아오는 주소 |
-| POST | `/reconcile` | `reconcile.stale-after`(기본 30초)가 지난 결제 중 주문을 모두 대사 |
-| POST | `/reconcile/{id}` | 주문 하나를 바로 대사 |
-| GET | `/diagnostics/mismatches` | PG는 캡처됐는데 주문은 결제 완료가 아닌 건 |
-| GET, PUT, DELETE | `/faults` | 장애 주입 조회, 설정, 초기화 |
-| GET | `/eximbay/params/{pgOrderId}` | 엑심베이 SDK에 넘길 값 |
-| GET, POST | `/eximbay/return`, `/eximbay/status` | 엑심베이 인증 결과 수신 |
-| POST | `/webhooks/paypal` | PayPal 웹훅 수신 |
-
-장애 주입 항목은 다음과 같습니다.
+실험 콘솔에서 켜고 끕니다. 실제 PG 연동에도 똑같이 걸립니다.
 
 - `pgDelayMs`: PG 호출마다 이만큼 늦게 응답
 - `pgTimeoutAfterCapture`: PG는 캡처했는데 응답을 못 받은 것처럼 예외
