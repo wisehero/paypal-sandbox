@@ -2,7 +2,7 @@
 
 주문 결제 흐름에서 PG 호출을 DB 트랜잭션 안에 넣을 때와 밖으로 뺄 때 무엇이 달라지는지 직접 장애를 넣어 보며 비교하는 실험 프로젝트입니다. PG는 PayPal 샌드박스와 엑심베이 테스트 서버를 붙였습니다. 메모리 안에서 도는 가짜 PG는 자동 테스트에서만 씁니다.
 
-Spring Boot 4.1, Java 25, H2 메모리 DB를 씁니다.
+Spring Boot 4.1, Java 25, MySQL 8.4를 씁니다. 실행과 테스트 모두 Docker로 MySQL을 띄우므로 Docker가 필요합니다.
 
 ## 두 구조
 
@@ -28,7 +28,7 @@ PG가 거절하면 주문을 실패로 바꾸고 재고를 돌려줍니다. PG�
 
 구조 A에서 롤백된 주문은 결제를 시도하지 않은 주문과 상태가 똑같이 CREATED입니다. 그래서 대사 대상으로 골라낼 수 없고, 미결제 주문을 모두 PG에 조회해 봐야(`/diagnostics/mismatches`) 찾을 수 있습니다. 트랜잭션으로 묶으면 불일치가 없어지는 게 아니라 보이지 않게 됩니다.
 
-이 결과는 `src/test`의 테스트로 재현됩니다. 테스트는 외부 PG 대신 `src/test`에 있는 가짜 PG(`FakePaymentGateway`)로 돕니다.
+이 결과는 `src/test`의 테스트로 재현됩니다. 테스트는 외부 PG 대신 `src/test`에 있는 가짜 PG(`FakePaymentGateway`)로 돌고, DB는 Testcontainers로 띄운 MySQL을 씁니다.
 
 ```
 ./gradlew test
@@ -51,6 +51,8 @@ PG가 거절하면 주문을 실패로 바꾸고 재고를 돌려줍니다. PG�
 ```
 ./gradlew bootRun
 ```
+
+`compose.yaml`의 MySQL이 함께 뜹니다. 앱을 꺼도 컨테이너는 남아 있고, 테이블은 실행할 때마다 새로 만듭니다. 호스트 포트는 Docker가 빈 포트로 고르며 `docker compose port mysql 3306`으로 확인합니다. 접속 계정은 `sandbox` / `sandbox`, DB는 `paypal_sandbox`입니다. 직접 띄운 MySQL을 쓰려면 `SPRING_DOCKER_COMPOSE_ENABLED=false`와 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`를 넘깁니다.
 
 키를 하나도 넣지 않으면 결제 수단에 엑심베이만 나옵니다. PayPal을 쓰려면 아래처럼 키를 넣고 실행합니다.
 

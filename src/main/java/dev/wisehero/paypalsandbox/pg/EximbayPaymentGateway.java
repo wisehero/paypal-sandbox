@@ -29,7 +29,7 @@ import org.springframework.web.client.RestClientResponseException;
  *   <li>캡처: 결제 승인 API(PAYMENT_PA)를 부른다. 이때 실제로 돈이 빠져나간다. (PayPal의 캡처)</li>
  * </ol>
  *
- * <p>결제창에 넘길 파라미터와 인증 결과는 메모리에만 둔다. H2 메모리 DB와 마찬가지로 재시작하면 사라진다.
+ * <p>결제창에 넘길 파라미터와 인증 결과는 메모리에만 둔다. 재시작하면 사라진다.
  */
 public class EximbayPaymentGateway implements PgClient {
 

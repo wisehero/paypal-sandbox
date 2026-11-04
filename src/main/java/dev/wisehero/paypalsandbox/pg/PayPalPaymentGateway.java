@@ -30,7 +30,7 @@ public class PayPalPaymentGateway implements PgClient {
     private final FaultInjector faults;
     private final RestClient client;
     /**
-     * H2 메모리 DB라 재시작하면 주문 ID가 다시 1부터 시작한다. PayPal은 PayPal-Request-Id를 기억하므로
+     * 테이블을 실행마다 새로 만들어서(ddl-auto) 재시작하면 주문 ID가 다시 1부터 시작한다. PayPal은 PayPal-Request-Id를 기억하므로
      * 주문 ID만으로 키를 만들면 이전 실행에서 만든 주문의 응답을 돌려받는다. 실행마다 다른 값을 붙인다.
      */
     private final String runId = UUID.randomUUID().toString().substring(0, 8);

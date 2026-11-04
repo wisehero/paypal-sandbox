@@ -2,9 +2,11 @@ spring:
   application:
     name: paypal-sandbox
   datasource:
-    url: jdbc:h2:mem:sandbox;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=60000
-    username: sa
-    password:
+    # bootRun이면 compose.yaml의 MySQL을 띄우고 그 컨테이너 접속 정보가 아래 값보다 우선한다.
+    # 직접 띄운 MySQL을 쓰려면 SPRING_DOCKER_COMPOSE_ENABLED=false로 끄고 DB_URL 등을 넘긴다.
+    url: ${DB_URL:jdbc:mysql://localhost:3306/paypal_sandbox}
+    username: ${DB_USERNAME:sandbox}
+    password: ${DB_PASSWORD:sandbox}
     hikari:
       # 커넥션 풀 고갈 실험을 위해 일부러 작게 잡는다.
       maximum-pool-size: ${DB_POOL_SIZE:5}
@@ -14,9 +16,10 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: create-drop
-  h2:
-    console:
-      enabled: true
+  docker:
+    compose:
+      # 앱을 끌 때 MySQL 컨테이너는 남겨 둔다. 다음 실행이 빨라진다. 테이블은 ddl-auto로 매번 새로 만든다.
+      lifecycle-management: start-only
 
 pg:
   # 주문을 만들 때 PG를 고르지 않으면 쓰는 기본값. eximbay 또는 paypal.

@@ -38,7 +38,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * PG는 메모리 안의 가짜 PG를 쓴다.
  */
 @SpringBootTest(properties = "pg.provider=fake")
-@Import(FakePgConfig.class)
+@Import({FakePgConfig.class, MySqlTestConfig.class})
 class CheckoutScenarioTest {
 
     @Autowired

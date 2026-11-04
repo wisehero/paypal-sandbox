@@ -1,0 +1,14 @@
+# 로컬 실험용 MySQL. ./gradlew bootRun 하면 Spring Boot가 이 파일을 보고 알아서 띄운다.
+# 접속 정보는 로컬 전용 값이다. 외부에 여는 DB에 쓰지 않는다.
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: paypal_sandbox
+      MYSQL_USER: sandbox
+      MYSQL_PASSWORD: sandbox
+      MYSQL_ROOT_PASSWORD: root
+    # 호스트 포트는 Docker가 빈 포트로 고른다. 3306 같은 고정 포트는 다른 MySQL이나 터널과 겹칠 수 있다.
+    # 실제 포트는 docker compose port mysql 3306 으로 확인한다.
+    ports:
+      - "3306"

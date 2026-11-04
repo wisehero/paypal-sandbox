@@ -30,11 +30,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 @SpringBootTest(properties = {
         "pg.provider=fake",
-        "spring.datasource.url=jdbc:h2:mem:pool-test;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000",
         "spring.datasource.hikari.maximum-pool-size=2",
         "spring.datasource.hikari.connection-timeout=300"
 })
-@Import(FakePgConfig.class)
+@Import({FakePgConfig.class, MySqlTestConfig.class})
 class ConnectionPoolExhaustionTest {
 
     private static final Duration PG_DELAY = Duration.ofMillis(1500);
