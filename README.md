@@ -2,21 +2,63 @@
 
 주문 결제 흐름에서 PG 호출을 DB 트랜잭션 안에 넣을 때와 밖으로 뺄 때 무엇이 달라지는지 직접 장애를 넣어 보며 비교하는 실험 프로젝트입니다. PG는 PayPal 샌드박스와 엑심베이 테스트 서버를 붙였습니다. 메모리 안에서 도는 가짜 PG는 자동 테스트에서만 씁니다.
 
-Spring Boot 4.1, Java 25, MySQL 8.4를 씁니다. 실행과 테스트 모두 Docker로 MySQL을 띄우므로 Docker가 필요합니다.
+Spring Boot 4.1, Java 25, MySQL 8.4, Lombok을 씁니다. 실행과 테스트 모두 Docker로 MySQL을 띄우므로 Docker가 필요합니다.
+
+## 주문에서 결제까지
+
+주문서에서 결제를 누르면 우리 주문 행을 먼저 만들고, 바로 PG 주문을 만듭니다.
+
+```java
+PurchaseOrder order = saveOrder(mergeQuantities(items), requestedStrategy);   // 트랜잭션 1
+PaymentGateway.PgOrder pgOrder = createPgOrder(order, provider);              // 트랜잭션 밖
+attachPgOrder(order.getId(), provider, pgOrder);                               // 트랜잭션 2
+```
+
+PG 주문을 만들 때 우리 주문 ID를 실어 보내므로 우리 주문이 먼저 있어야 합니다. PG 주문 생성이 실패하면 우리 주문을 실패로 남깁니다. 이 단계에서는 재고를 확인만 하고, 실제로 잡는 건 구매자가 승인한 뒤 캡처할 때입니다. 캡처를 어떻게 하느냐가 아래 두 구조의 차이입니다.
 
 ## 두 구조
 
 **구조 A. 트랜잭션 안** (`InTransactionCheckout`)
 
-하나의 `@Transactional` 메서드 안에서 주문과 상품 행을 잠그고, 재고를 줄이고, PG 캡처를 부르고, 주문을 PAID로 바꿉니다. 코드가 짧고 상태도 적습니다.
+하나의 `@Transactional` 메서드 안에서 주문과 상품 행을 잠그고, 재고를 줄이고, PG 캡처를 부르고, 주문을 PAID로 바꿉니다. 코드가 짧고 상태도 적습니다. 락을 쥔 채로 PG를 기다린다는 점이 이 구조의 특징이라 단계 메서드로 쪼개지 않고 한 메서드에 그대로 두었습니다.
 
 **구조 B. 트랜잭션 분리** (`SplitTransactionCheckout`)
 
-1. 짧은 트랜잭션으로 주문을 `PAYMENT_IN_PROGRESS`로 바꾸고 재고를 예약한 뒤 커밋합니다.
-2. 트랜잭션 없이 PG 캡처를 부릅니다. 멱등 키는 `capture-{주문ID}`로 고정합니다.
-3. 짧은 트랜잭션으로 주문을 PAID로 바꾸고 결제 기록과 outbox 이벤트를 남깁니다.
+```java
+String pgOrderId = startPayment(orderId);                                 // 트랜잭션 1
+PaymentGateway.CaptureResult result = captureAtPg(orderId, pgOrderId);    // 트랜잭션 밖
+return confirm(orderId, result.captureId());                              // 트랜잭션 2
+```
+
+1. `startPayment`: 주문을 `PAYMENT_IN_PROGRESS`로 바꾸고 재고를 예약한 뒤 커밋합니다.
+2. `captureAtPg`: 트랜잭션 없이 PG 캡처를 부릅니다. 멱등 키는 주문마다 고정(`capture-{주문ID}`)이라 재시도해도 두 번 결제되지 않습니다. PayPal에는 PG 주문 ID를 붙여서 보냅니다.
+3. `confirm`: 주문을 PAID로 바꾸고 결제 기록과 outbox 이벤트를 남깁니다.
 
 PG가 거절하면 주문을 실패로 바꾸고 재고를 돌려줍니다. PG가 타임아웃 나면 실패로 단정하지 않고 `PAYMENT_UNKNOWN`으로 남깁니다. 2번과 3번 사이에서 무슨 일이 생겨도 주문에 흔적이 남고, 대사(`PaymentReconciler`)가 PG를 조회해서 상태를 맞춥니다.
+
+```java
+PaymentGateway.PgOrderSnapshot snapshot = fetchPgStatus(orderId);           // 트랜잭션 밖
+Result result = syncWithPg(orderId, snapshot, allowFail);                   // 트랜잭션
+if (result.action() == Action.REFUND_REQUIRED) {
+    return refund(orderId, result.captureId());                             // PG 환불 후 기록
+}
+```
+
+PG에서 결제가 끝났으면 PAID로 확정합니다. PG에 결제가 없으면 실패 처리하고 재고를 돌려주는데, 캡처 요청이 아직 PG에서 처리 중일 수 있어서 `reconcile.stale-after`가 지난 주문에만 그렇게 합니다. 캡처 완료 웹훅으로 부를 때는 실패 처리를 하지 않습니다. 우리 쪽은 이미 실패로 끝났는데 PG에서는 결제된 주문이면 환불합니다.
+
+## 코드 구조
+
+| 패키지 | 내용 |
+|---|---|
+| `checkout` | 업무 흐름. 주문 생성(`OrderService`), 두 캡처 구조, 대사, 체크아웃 완료(`CheckoutService`) |
+| `order` | 주문 엔티티와 상태 전이. 상태를 바꾸는 메서드가 전이 가능한지 직접 검사합니다 |
+| `product` | 상품과 재고 예약, 반환(`StockLedger`) |
+| `payment` | 결제 기록, outbox 이벤트 |
+| `pg` | PG 연동. `RoutingPaymentGateway`가 PG 주문 ID 모양을 보고 PayPal, 엑심베이 중 하나로 보냅니다 |
+| `fault` | 장애 주입 |
+| `web` | 컨트롤러와 응답 DTO. 엔티티를 그대로 내보내지 않습니다 |
+
+흐름을 조율하는 메서드는 위 예시처럼 이름 붙은 단계만 위에서 아래로 나열하고, 각 줄 옆에 트랜잭션 경계를 적었습니다. 트랜잭션 람다와 예외 처리는 단계 메서드 안에 있습니다.
 
 ## 같은 장애를 넣었을 때 결과
 
@@ -100,17 +142,22 @@ set -a; . ./.env; set +a; ./gradlew bootRun
 |---|---|---|
 | GET | `/products` | 상품 목록. 결제와 상관없는 조회 |
 | POST | `/checkout` | 장바구니 상품으로 주문 생성 + PG 주문 생성. 결제 처리 구조를 함께 받음 |
+| GET | `/checkout/pg-orders/{pgOrderId}` | PG 주문 ID로 우리 주문 조회 |
 | POST | `/checkout/complete` | PG 승인 후 호출. 고른 구조로 캡처 |
 | GET | `/config` | 쓸 수 있는 PG, 기본 PG, 커넥션 풀 설정 |
 | POST | `/orders` | 주문 생성 + PG 주문 생성 (실험 콘솔용). `pg`에 `eximbay` 또는 `paypal` |
 | POST | `/orders/{id}/capture?strategy=in-tx\|split` | 캡처 |
+| GET | `/orders` | 주문 목록 |
 | GET | `/orders/{id}` | 주문 조회 |
+| GET | `/orders/{id}/pg` | PG 쪽 실제 주문 상태 |
+| GET | `/orders/return`, `/orders/cancel` | 쇼핑 화면 없이 API로 PayPal 승인을 받을 때 돌아오는 주소 |
 | POST | `/reconcile` | `reconcile.stale-after`(기본 30초)가 지난 결제 중 주문을 모두 대사 |
 | POST | `/reconcile/{id}` | 주문 하나를 바로 대사 |
 | GET | `/diagnostics/mismatches` | PG는 캡처됐는데 주문은 결제 완료가 아닌 건 |
 | GET, PUT, DELETE | `/faults` | 장애 주입 조회, 설정, 초기화 |
 | GET | `/eximbay/params/{pgOrderId}` | 엑심베이 SDK에 넘길 값 |
 | GET, POST | `/eximbay/return`, `/eximbay/status` | 엑심베이 인증 결과 수신 |
+| POST | `/webhooks/paypal` | PayPal 웹훅 수신 |
 
 장애 주입 항목은 다음과 같습니다.
 
@@ -119,6 +166,12 @@ set -a; . ./.env; set +a; ./gradlew bootRun
 - `dbFailureAfterCapture`: 캡처 뒤 DB 반영 단계에서 예외를 던져 롤백
 - `pgDecline`: PG가 결제를 거절
 - `paypalMockResponse`: PayPal 캡처 요청에 `PayPal-Mock-Response` 헤더로 이 오류 코드를 붙입니다(예: `INSTRUMENT_DECLINED`, `INTERNAL_SERVER_ERROR`). 위 네 가지는 우리 코드가 장애를 흉내 내지만, 이 항목은 PayPal 샌드박스가 실제 오류 응답을 보냅니다. PayPal은 결제를 처리하지 않습니다. 비우거나 빼면 꺼집니다.
+
+## PG 통신 로그
+
+PG에 보낸 요청과 받은 응답을 모두 로그로 남깁니다(`PgHttpLogging`). 메서드, URL, 헤더, 본문, 응답 코드, 걸린 시간이 찍히고, 응답을 못 받은 경우도 남습니다. 인증 헤더와 액세스 토큰만 가립니다. 로거 이름이 `pg.http.paypal`, `pg.http.eximbay`라서 PG별로 레벨을 따로 조절할 수 있습니다.
+
+PG 오류는 `PgCalls`가 두 가지로 나눕니다. 응답이 없거나 5xx면 결제됐을 수도 있으니 타임아웃으로, 4xx면 거절로 봅니다.
 
 ## 설정에서 눈여겨볼 것
 
