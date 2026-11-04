@@ -39,27 +39,36 @@ public class OrderService {
     }
 
     /**
-     * 주문을 먼저 커밋하고, PG 주문 생성은 트랜잭션 밖에서 부른다.
-     * 재고는 여기서 확인만 하고, 실제로 줄이는 건 캡처 단계에서 한다.
+     * 주문 생성. 우리 주문을 먼저 커밋하고, PG 주문은 트랜잭션 밖에서 만든다.
+     * 재고는 확인만 하고 줄이지 않는다. 재고는 캡처할 때 잡는다.
      *
      * @param requestedStrategy 체크아웃에서 고른 결제 처리 구조. null이면 캡처할 때 고른다.
      */
     public CreatedOrder create(List<Item> items, PgProvider provider, CaptureStrategy requestedStrategy) {
-        Map<Long, Integer> quantities = mergeQuantities(items);
-        PurchaseOrder saved = tx.execute(status ->
-                orders.save(new PurchaseOrder(snapshotLines(quantities), CURRENCY, requestedStrategy)));
-        Long orderId = saved.getId();
+        PurchaseOrder order = saveOrder(mergeQuantities(items), requestedStrategy);   // 트랜잭션 1
+        PaymentGateway.PgOrder pgOrder = createPgOrder(order, provider);              // 트랜잭션 밖
+        attachPgOrder(order.getId(), provider, pgOrder);                               // 트랜잭션 2
+        return new CreatedOrder(order.getId(), pgOrder.pgOrderId(), pgOrder.approveUrl());
+    }
 
-        PaymentGateway.PgOrder pgOrder;
+    private PurchaseOrder saveOrder(Map<Long, Integer> quantities, CaptureStrategy requestedStrategy) {
+        return tx.execute(status ->
+                orders.save(new PurchaseOrder(snapshotLines(quantities), CURRENCY, requestedStrategy)));
+    }
+
+    /** PG에 우리 주문 ID를 실어 주문을 만든다. 실패하면 우리 주문을 실패로 남긴다. */
+    private PaymentGateway.PgOrder createPgOrder(PurchaseOrder order, PgProvider provider) {
         try {
-            pgOrder = gateway.createOrder(provider, String.valueOf(orderId), saved.getAmount(), saved.getCurrency());
+            return gateway.createOrder(provider, String.valueOf(order.getId()), order.getAmount(), order.getCurrency());
         } catch (RuntimeException e) {
-            tx.executeWithoutResult(status -> orders.getOrThrow(orderId).markFailed("PG 주문 생성 실패: " + e.getMessage()));
+            tx.executeWithoutResult(status ->
+                    orders.getOrThrow(order.getId()).markFailed("PG 주문 생성 실패: " + e.getMessage()));
             throw e;
         }
+    }
 
+    private void attachPgOrder(Long orderId, PgProvider provider, PaymentGateway.PgOrder pgOrder) {
         tx.executeWithoutResult(status -> orders.getOrThrow(orderId).attachPgOrder(provider, pgOrder.pgOrderId()));
-        return new CreatedOrder(orderId, pgOrder.pgOrderId(), pgOrder.approveUrl());
     }
 
     /** 같은 상품이 여러 줄로 들어오면 수량을 합친다. 들어온 순서는 유지한다. */

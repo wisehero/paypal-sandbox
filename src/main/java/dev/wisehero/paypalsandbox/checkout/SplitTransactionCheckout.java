@@ -34,19 +34,9 @@ public class SplitTransactionCheckout {
     private final TransactionTemplate tx;
 
     public PurchaseOrder capture(Long orderId) {
-        String pgOrderId = startPayment(orderId);
-
-        PaymentGateway.CaptureResult result;
-        try {
-            result = gateway.capture(pgOrderId, IdempotencyKeys.capture(orderId));
-        } catch (PgDeclinedException e) {
-            markFailed(orderId, e.getMessage());
-            throw e;
-        } catch (PgTimeoutException e) {
-            markUnknown(orderId);
-            throw e;
-        }
-        return confirm(orderId, result.captureId());
+        String pgOrderId = startPayment(orderId);                                 // 트랜잭션 1
+        PaymentGateway.CaptureResult result = captureAtPg(orderId, pgOrderId);    // 트랜잭션 밖
+        return confirm(orderId, result.captureId());                              // 트랜잭션 2
     }
 
     /** 트랜잭션 1: 결제 시작 흔적을 남기고 재고를 예약한 뒤 바로 커밋한다. */
@@ -57,6 +47,22 @@ public class SplitTransactionCheckout {
             stock.reserve(order);
             return order.getPgOrderId();
         });
+    }
+
+    /**
+     * PG 캡처. 실패하면 결과에 따라 주문에 흔적을 남기고 예외를 그대로 던진다.
+     * 거절은 확실한 실패지만, 타임아웃은 결제가 됐을 수도 있어서 실패로 단정하지 않는다.
+     */
+    private PaymentGateway.CaptureResult captureAtPg(Long orderId, String pgOrderId) {
+        try {
+            return gateway.capture(pgOrderId, IdempotencyKeys.capture(orderId));
+        } catch (PgDeclinedException e) {
+            markFailed(orderId, e.getMessage());
+            throw e;
+        } catch (PgTimeoutException e) {
+            markUnknown(orderId);
+            throw e;
+        }
     }
 
     /** PG가 확실히 거절했다. 예약한 재고를 돌려준다. */

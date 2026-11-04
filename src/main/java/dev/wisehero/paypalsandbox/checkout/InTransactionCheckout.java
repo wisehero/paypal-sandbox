@@ -32,12 +32,12 @@ public class InTransactionCheckout {
 
     @Transactional
     public PurchaseOrder capture(Long orderId) {
+        // 처음부터 끝까지 한 트랜잭션. 실패하면 아래 단계가 전부 롤백된다.
         PurchaseOrder order = orders.lockOrThrow(orderId);
         order.beginInTransactionCapture();
-
         stock.reserve(order);
 
-        // 커넥션과 락을 쥔 채로 외부 호출
+        // 커넥션과 주문, 상품 행 락을 쥔 채로 PG를 부른다.
         PaymentGateway.CaptureResult result = gateway.capture(order.getPgOrderId(), IdempotencyKeys.capture(orderId));
 
         confirmation.confirm(order, result.captureId());

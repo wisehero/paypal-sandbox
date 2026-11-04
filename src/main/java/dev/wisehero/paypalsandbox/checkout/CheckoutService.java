@@ -28,21 +28,31 @@ public class CheckoutService {
      */
     public CompleteResult complete(String pgOrderId) {
         PurchaseOrder order = orderService.getByPgOrderId(pgOrderId);
-        if (!order.isFromCheckout()) {
-            throw new IllegalStateException("실험 콘솔에서 만든 주문은 콘솔에서 캡처한다: order=" + order.getId());
-        }
+        requireFromCheckout(order);
+
         // 같은 화면을 새로고침해서 두 번 들어와도 다시 캡처하지 않는다.
         if (order.isCaptureStarted()) {
             return new CompleteResult(order.getId(), order.getStatus(), null);
         }
 
-        String error = null;
+        String error = captureWithRequestedStrategy(order);
+        return new CompleteResult(order.getId(), orderService.get(order.getId()).getStatus(), error);
+    }
+
+    private static void requireFromCheckout(PurchaseOrder order) {
+        if (!order.isFromCheckout()) {
+            throw new IllegalStateException("실험 콘솔에서 만든 주문은 콘솔에서 캡처한다: order=" + order.getId());
+        }
+    }
+
+    /** 캡처 실패는 주문 상태에 이미 반영되어 있다. 화면에 보여 줄 오류 메시지만 돌려준다. */
+    private String captureWithRequestedStrategy(PurchaseOrder order) {
         try {
             orderService.capture(order.getId(), order.getRequestedStrategy());
+            return null;
         } catch (RuntimeException e) {
-            error = e.getMessage();
+            return e.getMessage();
         }
-        return new CompleteResult(order.getId(), orderService.get(order.getId()).getStatus(), error);
     }
 
     public record CompleteResult(Long orderId, OrderStatus status, String error) {

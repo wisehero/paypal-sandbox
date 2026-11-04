@@ -57,38 +57,49 @@ public class PaymentReconciler {
      *                  캡처 요청이 아직 PG에서 처리 중일 수 있으므로 충분히 시간이 지난 주문에만 true를 쓴다.
      */
     public Result reconcile(Long orderId, boolean allowFail) {
-        // PG 조회는 트랜잭션 밖에서 한다. 그동안 커넥션과 락을 쥐지 않는다.
-        PaymentGateway.PgOrderSnapshot snapshot = gateway.getOrder(orders.getOrThrow(orderId).getPgOrderId());
-        Result result = tx.execute(status -> apply(orders.lockOrThrow(orderId), snapshot, allowFail));
-
+        PaymentGateway.PgOrderSnapshot snapshot = fetchPgStatus(orderId);           // 트랜잭션 밖
+        Result result = syncWithPg(orderId, snapshot, allowFail);                   // 트랜잭션
         if (result.action() == Action.REFUND_REQUIRED) {
-            return refund(orderId, result.captureId());
+            return refund(orderId, result.captureId());                             // PG 환불 후 기록
         }
         return result;
     }
 
-    /** PG 상태를 보고 주문을 확정하거나 실패 처리한다. 환불이 필요하면 표시만 하고 트랜잭션 밖에서 한다. */
-    private Result apply(PurchaseOrder order, PaymentGateway.PgOrderSnapshot snapshot, boolean allowFail) {
+    /** PG 조회는 트랜잭션 밖에서 한다. 응답을 기다리는 동안 커넥션과 락을 쥐지 않는다. */
+    private PaymentGateway.PgOrderSnapshot fetchPgStatus(Long orderId) {
+        return gateway.getOrder(orders.getOrThrow(orderId).getPgOrderId());
+    }
+
+    /** 주문을 잠그고 PG 상태에 맞춘다. 환불이 필요하면 표시만 한다. 환불은 PG 호출이라 트랜잭션 밖에서 한다. */
+    private Result syncWithPg(Long orderId, PaymentGateway.PgOrderSnapshot snapshot, boolean allowFail) {
+        return tx.execute(status -> {
+            PurchaseOrder order = orders.lockOrThrow(orderId);
+            if (order.isPaid()) {
+                return new Result(orderId, Action.ALREADY_PAID, null);
+            }
+            if (order.isAwaitingPgResult()) {
+                return settleAwaiting(order, snapshot, allowFail);
+            }
+            if (order.getStatus() == OrderStatus.PAYMENT_FAILED && snapshot.isCaptured()) {
+                return new Result(orderId, Action.REFUND_REQUIRED, snapshot.captureId());
+            }
+            return new Result(orderId, Action.NOTHING, null);
+        });
+    }
+
+    /** PG 결과를 기다리던 주문: 캡처됐으면 확정, 아니면 실패 처리하고 재고를 돌려준다. */
+    private Result settleAwaiting(PurchaseOrder order, PaymentGateway.PgOrderSnapshot snapshot, boolean allowFail) {
         Long orderId = order.getId();
-        if (order.isPaid()) {
-            return new Result(orderId, Action.ALREADY_PAID, null);
+        if (snapshot.isCaptured()) {
+            confirmation.confirm(order, snapshot.captureId());
+            return new Result(orderId, Action.CONFIRMED_PAID, snapshot.captureId());
         }
-        if (order.isAwaitingPgResult()) {
-            if (snapshot.isCaptured()) {
-                confirmation.confirm(order, snapshot.captureId());
-                return new Result(orderId, Action.CONFIRMED_PAID, snapshot.captureId());
-            }
-            if (allowFail) {
-                stock.release(order);
-                order.markFailed("대사: PG 캡처 없음 (" + snapshot.status() + ")");
-                return new Result(orderId, Action.MARKED_FAILED, null);
-            }
+        if (!allowFail) {
             return new Result(orderId, Action.STILL_PENDING, null);
         }
-        if (order.getStatus() == OrderStatus.PAYMENT_FAILED && snapshot.isCaptured()) {
-            return new Result(orderId, Action.REFUND_REQUIRED, snapshot.captureId());
-        }
-        return new Result(orderId, Action.NOTHING, null);
+        stock.release(order);
+        order.markFailed("대사: PG 캡처 없음 (" + snapshot.status() + ")");
+        return new Result(orderId, Action.MARKED_FAILED, null);
     }
 
     /** 보상: 주문은 실패로 끝났는데 PG에서 돈이 빠져나갔다. */
