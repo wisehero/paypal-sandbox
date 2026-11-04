@@ -7,6 +7,7 @@ import dev.wisehero.paypalsandbox.pg.PaymentGateway;
 import dev.wisehero.paypalsandbox.pg.PgDeclinedException;
 import dev.wisehero.paypalsandbox.pg.PgTimeoutException;
 import dev.wisehero.paypalsandbox.product.StockLedger;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -22,6 +23,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 이 흔적을 {@link PaymentReconciler}가 PG 상태와 맞춘다.
  */
 @Service
+@RequiredArgsConstructor
 public class SplitTransactionCheckout {
 
     private final PurchaseOrderRepository orders;
@@ -30,16 +32,6 @@ public class SplitTransactionCheckout {
     private final PaymentConfirmation confirmation;
     private final FaultInjector faults;
     private final TransactionTemplate tx;
-
-    SplitTransactionCheckout(PurchaseOrderRepository orders, StockLedger stock, PaymentGateway gateway,
-            PaymentConfirmation confirmation, FaultInjector faults, TransactionTemplate tx) {
-        this.orders = orders;
-        this.stock = stock;
-        this.gateway = gateway;
-        this.confirmation = confirmation;
-        this.faults = faults;
-        this.tx = tx;
-    }
 
     public PurchaseOrder capture(Long orderId) {
         String pgOrderId = tx.execute(status -> {

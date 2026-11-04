@@ -7,8 +7,13 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import java.math.BigDecimal;
 import java.time.Instant;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Entity
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PaymentRecord {
 
     @Id
@@ -28,9 +33,6 @@ public class PaymentRecord {
 
     private Instant createdAt;
 
-    protected PaymentRecord() {
-    }
-
     public PaymentRecord(Long orderId, String pgOrderId, String captureId, BigDecimal amount, String currency) {
         this.orderId = orderId;
         this.pgOrderId = pgOrderId;
@@ -38,17 +40,5 @@ public class PaymentRecord {
         this.amount = amount;
         this.currency = currency;
         this.createdAt = Instant.now();
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public Long getOrderId() {
-        return orderId;
-    }
-
-    public String getCaptureId() {
-        return captureId;
     }
 }

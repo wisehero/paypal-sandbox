@@ -1,18 +1,16 @@
 package dev.wisehero.paypalsandbox.product;
 
 import java.math.BigDecimal;
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 class ProductSeeder implements ApplicationRunner {
 
     private final ProductRepository products;
-
-    ProductSeeder(ProductRepository products) {
-        this.products = products;
-    }
 
     @Override
     public void run(ApplicationArguments args) {

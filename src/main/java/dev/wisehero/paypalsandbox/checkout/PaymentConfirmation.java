@@ -6,6 +6,7 @@ import dev.wisehero.paypalsandbox.payment.OutboxEvent;
 import dev.wisehero.paypalsandbox.payment.OutboxEventRepository;
 import dev.wisehero.paypalsandbox.payment.PaymentRecord;
 import dev.wisehero.paypalsandbox.payment.PaymentRecordRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,15 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
  * 캡처 직후 경로와 대사 경로가 같이 쓴다. 여러 번 불려도 결과가 같다.
  */
 @Component
+@RequiredArgsConstructor
 public class PaymentConfirmation {
 
     private final PaymentRecordRepository payments;
     private final OutboxEventRepository outbox;
-
-    PaymentConfirmation(PaymentRecordRepository payments, OutboxEventRepository outbox) {
-        this.payments = payments;
-        this.outbox = outbox;
-    }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void confirm(PurchaseOrder order, String captureId) {

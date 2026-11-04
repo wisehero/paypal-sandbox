@@ -5,21 +5,19 @@ import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.RequiredArgsConstructor;
 
 /**
  * 자동 테스트 전용 가짜 PG. 메모리 안에서 돈다.
  * 구매자 승인 단계를 생략해서 주문을 만들면 바로 APPROVED 상태가 된다.
  * 장애 주입으로 지연, 결제 후 타임아웃, 거절을 흉내 낸다.
  */
+@RequiredArgsConstructor
 public class FakePaymentGateway implements PgClient {
 
     private final FaultInjector faults;
     private final Map<String, FakeOrder> orders = new ConcurrentHashMap<>();
     private final Map<String, String> captureByIdempotencyKey = new ConcurrentHashMap<>();
-
-    public FakePaymentGateway(FaultInjector faults) {
-        this.faults = faults;
-    }
 
     @Override
     public PgProvider provider() {

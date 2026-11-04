@@ -5,8 +5,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import java.math.BigDecimal;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Entity
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Product {
 
     @Id
@@ -18,9 +23,6 @@ public class Product {
     private BigDecimal price;
 
     private int stock;
-
-    protected Product() {
-    }
 
     public Product(String name, BigDecimal price, int stock) {
         this.name = name;
@@ -37,21 +39,5 @@ public class Product {
 
     public void increaseStock(int quantity) {
         stock += quantity;
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public BigDecimal getPrice() {
-        return price;
-    }
-
-    public int getStock() {
-        return stock;
     }
 }

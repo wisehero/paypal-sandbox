@@ -11,6 +11,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,15 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/checkout")
+@RequiredArgsConstructor
 class CheckoutController {
 
     private final CheckoutService checkoutService;
     private final OrderService orderService;
-
-    CheckoutController(CheckoutService checkoutService, OrderService orderService) {
-        this.checkoutService = checkoutService;
-        this.orderService = orderService;
-    }
 
     @PostMapping
     OrderService.CreatedOrder start(@Valid @RequestBody StartRequest request) {

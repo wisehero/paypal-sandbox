@@ -3,8 +3,8 @@ package dev.wisehero.paypalsandbox.web;
 import dev.wisehero.paypalsandbox.checkout.PaymentReconciler;
 import dev.wisehero.paypalsandbox.pg.PayPalPaymentGateway;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,17 +18,12 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @ConditionalOnExpression("!'${pg.paypal.client-id:}'.isEmpty()")
+@Slf4j
+@RequiredArgsConstructor
 class PayPalWebhookController {
-
-    private static final Logger log = LoggerFactory.getLogger(PayPalWebhookController.class);
 
     private final PayPalPaymentGateway gateway;
     private final PaymentReconciler reconciler;
-
-    PayPalWebhookController(PayPalPaymentGateway gateway, PaymentReconciler reconciler) {
-        this.gateway = gateway;
-        this.reconciler = reconciler;
-    }
 
     @PostMapping("/webhooks/paypal")
     ResponseEntity<Void> receive(@RequestHeader Map<String, String> headers, @RequestBody Map<String, Object> event) {

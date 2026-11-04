@@ -5,6 +5,7 @@ import dev.wisehero.paypalsandbox.order.OrderStatus;
 import dev.wisehero.paypalsandbox.order.PurchaseOrder;
 import dev.wisehero.paypalsandbox.pg.PgProvider;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
@@ -12,13 +13,10 @@ import org.springframework.stereotype.Service;
  * 장바구니 → 주문 생성 → PG 승인 화면 → 돌아와서 캡처 → 결제 완료 화면.
  */
 @Service
+@RequiredArgsConstructor
 public class CheckoutService {
 
     private final OrderService orderService;
-
-    CheckoutService(OrderService orderService) {
-        this.orderService = orderService;
-    }
 
     public OrderService.CreatedOrder start(List<OrderService.Item> items, PgProvider provider, CaptureStrategy strategy) {
         return orderService.create(items, provider, strategy);

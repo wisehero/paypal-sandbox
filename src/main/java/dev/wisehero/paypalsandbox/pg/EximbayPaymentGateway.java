@@ -12,6 +12,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.ResourceAccessException;
@@ -97,12 +100,12 @@ public class EximbayPaymentGateway implements PgClient {
     /** 결제창을 띄울 때 SDK에 넘길 값. 결제 준비 API에 보낸 값과 똑같아야 fgkey가 맞는다. */
     public SdkParams sdkParams(String pgOrderId) {
         Session session = session(pgOrderId);
-        Map<String, Object> params = new LinkedHashMap<>(session.readyRequest());
-        params.put("fgkey", session.fgkey());
+        Map<String, Object> params = new LinkedHashMap<>(session.getReadyRequest());
+        params.put("fgkey", session.getFgkey());
         // 결제창을 팝업 대신 현재 화면 이동으로 띄운다. fgkey 계산에는 들어가지 않는다.
         params.put("settings", Map.of("display_type", "R", "autoclose", "Y"));
         return new SdkParams(properties.baseUrl() + "/v3/javascriptSDK.js", params,
-                session.amount(), session.currency());
+                session.getAmount(), session.getCurrency());
     }
 
     /**
@@ -135,7 +138,7 @@ public class EximbayPaymentGateway implements PgClient {
         if (session == null) {
             return new AuthResult(pgOrderId, false, "모르는 엑심베이 주문. 서버를 재시작하면 결제 준비 정보가 사라진다: " + pgOrderId);
         }
-        session.authTransactionId = params.get("transaction_id");
+        session.setAuthTransactionId(params.get("transaction_id"));
         return new AuthResult(pgOrderId, true, null);
     }
 
@@ -146,7 +149,7 @@ public class EximbayPaymentGateway implements PgClient {
             throw new PgDeclinedException("주입한 장애: PG 결제 거절");
         }
         Session session = session(pgOrderId);
-        if (session.authTransactionId == null) {
+        if (session.getAuthTransactionId() == null) {
             throw new PgDeclinedException("구매자가 엑심베이 결제창에서 인증을 마치지 않았다: " + pgOrderId);
         }
 
@@ -158,9 +161,9 @@ public class EximbayPaymentGateway implements PgClient {
                         "mid", properties.mid(),
                         "payment", Map.of(
                                 "order_id", pgOrderId,
-                                "currency", session.currency(),
-                                "amount", session.amount(),
-                                "payer_auth_id", session.authTransactionId,
+                                "currency", session.getCurrency(),
+                                "amount", session.getAmount(),
+                                "payer_auth_id", session.getAuthTransactionId(),
                                 "lang", properties.lang())))
                 .retrieve()
                 .body(Json.MAP_TYPE));
@@ -207,15 +210,15 @@ public class EximbayPaymentGateway implements PgClient {
                         "key_field", "order_id",
                         "payment", Map.of(
                                 "order_id", pgOrderId,
-                                "currency", session.currency(),
-                                "amount", session.amount(),
+                                "currency", session.getCurrency(),
+                                "amount", session.getAmount(),
                                 "lang", properties.lang())))
                 .retrieve()
                 .body(Json.MAP_TYPE));
 
         if (!"0000".equals(Json.string(response, "rescode"))) {
             // 인증조차 안 된 주문은 승인됐을 수 없다.
-            return new PgOrderSnapshot(session.authTransactionId == null ? PgOrderStatus.CREATED : PgOrderStatus.UNKNOWN, null);
+            return new PgOrderSnapshot(session.getAuthTransactionId() == null ? PgOrderStatus.CREATED : PgOrderStatus.UNKNOWN, null);
         }
         Map<String, Object> payment = Json.asMap(response.get("payment"));
         String status = firstNonNull(Json.string(payment, "status"), Json.string(response, "status"));
@@ -226,7 +229,7 @@ public class EximbayPaymentGateway implements PgClient {
         PgOrderStatus mapped = switch (status == null ? "" : status.toUpperCase()) {
             case "SALE", "AUTH", "CAPTURE" -> PgOrderStatus.COMPLETED;
             case "REFUND", "CANCEL", "VOID", "PARTIAL_REFUND" -> PgOrderStatus.VOIDED;
-            default -> session.authTransactionId == null ? PgOrderStatus.CREATED : PgOrderStatus.APPROVED;
+            default -> session.getAuthTransactionId() == null ? PgOrderStatus.CREATED : PgOrderStatus.APPROVED;
         };
         return new PgOrderSnapshot(mapped, mapped == PgOrderStatus.COMPLETED ? transactionId : null);
     }
@@ -245,14 +248,14 @@ public class EximbayPaymentGateway implements PgClient {
                         "mid", properties.mid(),
                         "refund", Map.of(
                                 "refund_type", "F",
-                                "refund_amount", session.amount(),
+                                "refund_amount", session.getAmount(),
                                 "refund_id", idempotencyKey + "-" + captureId,
                                 "reason", "order could not be completed"),
                         "payment", Map.of(
                                 "order_id", pgOrderId,
-                                "currency", session.currency(),
-                                "amount", session.amount(),
-                                "balance", session.amount(),
+                                "currency", session.getCurrency(),
+                                "amount", session.getAmount(),
+                                "balance", session.getAmount(),
                                 "lang", properties.lang())))
                 .retrieve()
                 .body(Json.MAP_TYPE));
@@ -293,6 +296,8 @@ public class EximbayPaymentGateway implements PgClient {
         }
     }
 
+    @Getter
+    @RequiredArgsConstructor
     private static final class Session {
 
         private final String pgOrderId;
@@ -300,31 +305,9 @@ public class EximbayPaymentGateway implements PgClient {
         private final String currency;
         private final String fgkey;
         private final Map<String, Object> readyRequest;
+        /** 구매자 인증이 끝나면 채운다. return_url과 status_url이 서로 다른 스레드에서 올 수 있다. */
+        @Setter
         private volatile String authTransactionId;
-
-        private Session(String pgOrderId, String amount, String currency, String fgkey, Map<String, Object> readyRequest) {
-            this.pgOrderId = pgOrderId;
-            this.amount = amount;
-            this.currency = currency;
-            this.fgkey = fgkey;
-            this.readyRequest = readyRequest;
-        }
-
-        String amount() {
-            return amount;
-        }
-
-        String currency() {
-            return currency;
-        }
-
-        String fgkey() {
-            return fgkey;
-        }
-
-        Map<String, Object> readyRequest() {
-            return readyRequest;
-        }
     }
 
     public record SdkParams(String sdkUrl, Map<String, Object> params, String amount, String currency) {

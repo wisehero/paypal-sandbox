@@ -4,6 +4,7 @@ import dev.wisehero.paypalsandbox.order.OrderLine;
 import dev.wisehero.paypalsandbox.order.PurchaseOrder;
 import java.util.Comparator;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,13 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
  * 여러 상품을 잠글 때 항상 상품 ID 순서로 잠가서 교착 상태를 피한다.
  */
 @Component
+@RequiredArgsConstructor
 public class StockLedger {
 
     private final ProductRepository products;
-
-    StockLedger(ProductRepository products) {
-        this.products = products;
-    }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void reserve(PurchaseOrder order) {

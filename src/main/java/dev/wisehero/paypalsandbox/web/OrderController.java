@@ -9,6 +9,7 @@ import java.util.List;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,13 +21,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/orders")
+@RequiredArgsConstructor
 class OrderController {
 
     private final OrderService orderService;
-
-    OrderController(OrderService orderService) {
-        this.orderService = orderService;
-    }
 
     @PostMapping
     OrderService.CreatedOrder create(@Valid @RequestBody CreateOrderRequest request) {

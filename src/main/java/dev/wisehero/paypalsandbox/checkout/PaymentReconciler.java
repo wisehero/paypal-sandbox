@@ -8,6 +8,7 @@ import dev.wisehero.paypalsandbox.product.StockLedger;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -23,6 +24,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * PG 조회와 환불은 트랜잭션 밖에서 부른다.
  */
 @Service
+@RequiredArgsConstructor
 public class PaymentReconciler {
 
     private static final List<OrderStatus> AWAITING =
@@ -33,18 +35,9 @@ public class PaymentReconciler {
     private final PaymentGateway gateway;
     private final PaymentConfirmation confirmation;
     private final TransactionTemplate tx;
+    // lombok.config에서 @Value를 생성자 파라미터로 복사하게 해 두었다.
+    @Value("${reconcile.stale-after}")
     private final Duration staleAfter;
-
-    PaymentReconciler(PurchaseOrderRepository orders, StockLedger stock, PaymentGateway gateway,
-            PaymentConfirmation confirmation, TransactionTemplate tx,
-            @Value("${reconcile.stale-after}") Duration staleAfter) {
-        this.orders = orders;
-        this.stock = stock;
-        this.gateway = gateway;
-        this.confirmation = confirmation;
-        this.tx = tx;
-        this.staleAfter = staleAfter;
-    }
 
     /** 결제 중이거나 결과를 모르는 채로 staleAfter가 지난 주문을 모두 대사한다. */
     public List<Result> reconcileStale() {

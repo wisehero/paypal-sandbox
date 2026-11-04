@@ -5,6 +5,7 @@ import dev.wisehero.paypalsandbox.order.PurchaseOrder;
 import dev.wisehero.paypalsandbox.order.PurchaseOrderRepository;
 import dev.wisehero.paypalsandbox.pg.PaymentGateway;
 import dev.wisehero.paypalsandbox.product.StockLedger;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 롤백된 주문은 평범한 미결제 주문과 구분되지 않아서 나중에 찾기 어렵다.
  */
 @Service
+@RequiredArgsConstructor
 public class InTransactionCheckout {
 
     private final PurchaseOrderRepository orders;
@@ -27,15 +29,6 @@ public class InTransactionCheckout {
     private final PaymentGateway gateway;
     private final PaymentConfirmation confirmation;
     private final FaultInjector faults;
-
-    InTransactionCheckout(PurchaseOrderRepository orders, StockLedger stock, PaymentGateway gateway,
-            PaymentConfirmation confirmation, FaultInjector faults) {
-        this.orders = orders;
-        this.stock = stock;
-        this.gateway = gateway;
-        this.confirmation = confirmation;
-        this.faults = faults;
-    }
 
     @Transactional
     public PurchaseOrder capture(Long orderId) {

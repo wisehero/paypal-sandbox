@@ -21,11 +21,16 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 
 @Entity
 @Table(name = "purchase_order")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PurchaseOrder {
 
     private static final Set<OrderStatus> PAYABLE =
@@ -70,15 +75,12 @@ public class PurchaseOrder {
 
     private Instant updatedAt;
 
-    protected PurchaseOrder() {
-    }
-
     public PurchaseOrder(List<OrderLine> lines, String currency, CaptureStrategy requestedStrategy) {
         if (lines.isEmpty()) {
             throw new IllegalArgumentException("주문 상품이 없다");
         }
         this.lines = new ArrayList<>(lines);
-        this.amount = lines.stream().map(OrderLine::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        this.amount = lines.stream().map(OrderLine::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         this.currency = currency;
         this.requestedStrategy = requestedStrategy;
         this.status = OrderStatus.CREATED;
@@ -159,55 +161,8 @@ public class PurchaseOrder {
         }
     }
 
-    public Long getId() {
-        return id;
-    }
-
+    /** 밖에서 줄을 바꾸지 못하게 복사본을 준다. */
     public List<OrderLine> getLines() {
         return List.copyOf(lines);
-    }
-
-    public BigDecimal getAmount() {
-        return amount;
-    }
-
-    public String getCurrency() {
-        return currency;
-    }
-
-    public OrderStatus getStatus() {
-        return status;
-    }
-
-    public CaptureStrategy getRequestedStrategy() {
-        return requestedStrategy;
-    }
-
-    public CaptureStrategy getCaptureStrategy() {
-        return captureStrategy;
-    }
-
-    public PgProvider getPgProvider() {
-        return pgProvider;
-    }
-
-    public String getPgOrderId() {
-        return pgOrderId;
-    }
-
-    public String getCaptureId() {
-        return captureId;
-    }
-
-    public String getFailureReason() {
-        return failureReason;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public Instant getUpdatedAt() {
-        return updatedAt;
     }
 }

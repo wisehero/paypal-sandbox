@@ -6,6 +6,7 @@ import dev.wisehero.paypalsandbox.order.PurchaseOrderRepository;
 import dev.wisehero.paypalsandbox.pg.PaymentGateway;
 import java.util.List;
 import java.util.Objects;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
@@ -16,15 +17,11 @@ import org.springframework.stereotype.Service;
  * 트랜잭션 안 구조에서는 이런 전수 조회 말고는 롤백된 결제를 찾을 방법이 없다는 점을 보여 주려고 만들었다.
  */
 @Service
+@RequiredArgsConstructor
 public class MismatchFinder {
 
     private final PurchaseOrderRepository orders;
     private final PaymentGateway gateway;
-
-    MismatchFinder(PurchaseOrderRepository orders, PaymentGateway gateway) {
-        this.orders = orders;
-        this.gateway = gateway;
-    }
 
     public List<Mismatch> find() {
         return orders.findByStatusNotInAndPgOrderIdIsNotNull(List.of(OrderStatus.PAID, OrderStatus.REFUNDED))

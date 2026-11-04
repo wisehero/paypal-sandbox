@@ -5,25 +5,20 @@ import dev.wisehero.paypalsandbox.pg.PgProvider;
 import dev.wisehero.paypalsandbox.pg.RoutingPaymentGateway;
 import java.time.Duration;
 import java.util.List;
-import javax.sql.DataSource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 화면이 처음 열릴 때 읽는 설정값. */
 @RestController
+@RequiredArgsConstructor
 class ConfigController {
 
     private final RoutingPaymentGateway gateway;
     private final HikariDataSource dataSource;
+    @Value("${reconcile.stale-after}")
     private final Duration staleAfter;
-
-    ConfigController(RoutingPaymentGateway gateway, DataSource dataSource,
-            @Value("${reconcile.stale-after}") Duration staleAfter) {
-        this.gateway = gateway;
-        this.dataSource = (HikariDataSource) dataSource;
-        this.staleAfter = staleAfter;
-    }
 
     @GetMapping("/config")
     Config config() {

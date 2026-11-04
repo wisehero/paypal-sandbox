@@ -12,11 +12,13 @@ import dev.wisehero.paypalsandbox.product.ProductRepository;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
+@RequiredArgsConstructor
 public class OrderService {
 
     private static final String CURRENCY = "USD";
@@ -27,17 +29,6 @@ public class OrderService {
     private final InTransactionCheckout inTransactionCheckout;
     private final SplitTransactionCheckout splitTransactionCheckout;
     private final TransactionTemplate tx;
-
-    OrderService(PurchaseOrderRepository orders, ProductRepository products, RoutingPaymentGateway gateway,
-            InTransactionCheckout inTransactionCheckout, SplitTransactionCheckout splitTransactionCheckout,
-            TransactionTemplate tx) {
-        this.orders = orders;
-        this.products = products;
-        this.gateway = gateway;
-        this.inTransactionCheckout = inTransactionCheckout;
-        this.splitTransactionCheckout = splitTransactionCheckout;
-        this.tx = tx;
-    }
 
     public CreatedOrder create(Long productId, int quantity) {
         return create(productId, quantity, gateway.defaultProvider());
